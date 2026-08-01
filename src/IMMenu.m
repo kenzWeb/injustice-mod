@@ -29,6 +29,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) IMValueRow        *fixedRow;
 @property (nonatomic, strong) NSTimer           *ticker;
 @property (nonatomic, weak)   UIWindow          *previousKeyWindow;
+@property (nonatomic, assign) CGFloat            contentHeight;
+@property (nonatomic, assign) CGSize             lastWindowSize;
 @property (nonatomic, assign) BOOL               panelMoved;
 @property (nonatomic, assign) BOOL               badgeEnabled;
 @end
@@ -133,7 +135,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     self.scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
     self.scroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
     self.scroll.delaysContentTouches = NO;
-    self.scroll.canCancelContentTouches = NO;
+    self.scroll.canCancelContentTouches = YES;
+    self.scroll.alwaysBounceVertical = YES;
     [self.panel.contentView addSubview:self.scroll];
 
     IMRowBuilder *builder = [[IMRowBuilder alloc] initWithContainer:self.scroll];
@@ -253,13 +256,36 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)layoutPanelWithContentHeight:(CGFloat)contentHeight {
+    self.contentHeight = contentHeight;
+    [self relayoutPanel];
+}
+
+- (void)relayoutPanel {
+    UIWindowScene *scene = self.window.windowScene;
+    if (scene) self.window.frame = scene.coordinateSpace.bounds;
+
+    CGSize screen = self.window.bounds.size;
+    self.lastWindowSize = screen;
+
     const CGFloat headerHeight = IMHeaderHeight + 0.5;
-    CGFloat available = self.window.bounds.size.height - 24 - headerHeight;
-    CGFloat bodyHeight = MIN(contentHeight, MAX(120.0, available));
+    CGFloat available = screen.height - 24.0 - headerHeight;
+    CGFloat bodyHeight = MIN(self.contentHeight, MAX(120.0, available));
+    CGFloat panelHeight = headerHeight + bodyHeight;
 
     self.scroll.frame = CGRectMake(0, headerHeight, IMPanelWidth, bodyHeight);
-    self.scroll.contentSize = CGSizeMake(IMPanelWidth, contentHeight);
-    self.panel.frame = CGRectMake(20, 100, IMPanelWidth, headerHeight + bodyHeight);
+    self.scroll.contentSize = CGSizeMake(IMPanelWidth, self.contentHeight);
+
+    CGRect frame = self.panel.frame;
+    frame.size = CGSizeMake(IMPanelWidth, panelHeight);
+    if (!self.panelMoved) frame.origin = CGPointMake(20, 100);
+    frame.origin.x = MIN(MAX(8.0, frame.origin.x), MAX(8.0, screen.width - IMPanelWidth - 8.0));
+    frame.origin.y = MIN(MAX(8.0, frame.origin.y), MAX(8.0, screen.height - panelHeight - 8.0));
+    self.panel.frame = frame;
+
+    CGPoint ball = self.ball.center;
+    ball.x = MIN(MAX(kBallSize / 2, ball.x), screen.width - kBallSize / 2);
+    ball.y = MIN(MAX(kBallSize / 2, ball.y), screen.height - kBallSize / 2);
+    self.ball.center = ball;
 }
 
 - (void)dragBall:(UIPanGestureRecognizer *)gesture {
@@ -285,14 +311,17 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)togglePanel {
-    if (self.panel.hidden && !self.panelMoved) {
-        CGRect screen = self.window.bounds;
-        CGFloat x = MIN(MAX(8.0, CGRectGetMinX(self.ball.frame)),
-                        screen.size.width - IMPanelWidth - 8.0);
-        CGFloat y = MIN(CGRectGetMaxY(self.ball.frame) + 10.0,
-                        screen.size.height - self.panel.frame.size.height - 8.0);
-        self.panel.frame = CGRectMake(x, MAX(8.0, y),
-                                      IMPanelWidth, self.panel.frame.size.height);
+    if (self.panel.hidden) {
+        [self relayoutPanel];
+        if (!self.panelMoved) {
+            CGRect screen = self.window.bounds;
+            CGFloat height = self.panel.frame.size.height;
+            CGFloat x = MIN(MAX(8.0, CGRectGetMinX(self.ball.frame)),
+                            MAX(8.0, screen.size.width - IMPanelWidth - 8.0));
+            CGFloat y = MIN(CGRectGetMaxY(self.ball.frame) + 10.0,
+                            MAX(8.0, screen.size.height - height - 8.0));
+            self.panel.frame = CGRectMake(x, MAX(8.0, y), IMPanelWidth, height);
+        }
     }
     self.panel.hidden = !self.panel.hidden;
     if (self.panel.hidden) [self dismissKeyboard];
@@ -423,6 +452,11 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)refresh {
+    UIWindowScene *scene = self.window.windowScene;
+    if (scene && !CGSizeEqualToSize(scene.coordinateSpace.bounds.size, self.lastWindowSize)) {
+        [self relayoutPanel];
+    }
+
     IMHealthSnapshot health = IMReadHealth();
 
     self.badge.hidden = !(self.badgeEnabled && self.panel.hidden);
