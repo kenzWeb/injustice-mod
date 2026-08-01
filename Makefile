@@ -10,6 +10,7 @@ TWEAK_NAME = InjusticeMod
 InjusticeMod_FILES = \
     Tweak.xm \
     src/IMSettings.m \
+    src/IMPresets.m \
     src/IMRuntime.m \
     src/IMDamage.m \
     src/IMHooks.m \

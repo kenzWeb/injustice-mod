@@ -12,6 +12,7 @@ static atomic_bool sFreezeAll;
 static atomic_bool sFixedDamageEnabled;
 static atomic_bool sHealRequested;
 static atomic_bool sInfiniteEnergy;
+static atomic_bool sFreezeAI;
 static atomic_llong sAutoWinDeadlineMs;
 
 static atomic_llong sFixedDamage;
@@ -81,6 +82,35 @@ void IMSetDefenseMultiplier(double value) {
 
 BOOL IMInfiniteEnergy(void) { return atomic_load(&sInfiniteEnergy); }
 void IMSetInfiniteEnergy(BOOL on) { atomic_store(&sInfiniteEnergy, on); }
+
+BOOL IMFreezeAI(void) { return atomic_load(&sFreezeAI); }
+void IMSetFreezeAI(BOOL on) { atomic_store(&sFreezeAI, on); }
+
+IMSettingsSnapshot IMCaptureSettings(void) {
+    IMSettingsSnapshot s;
+    s.godMode            = IMGodMode();
+    s.oneHitKill         = IMOneHitKill();
+    s.freezeAll          = IMFreezeAll();
+    s.infiniteEnergy     = IMInfiniteEnergy();
+    s.freezeAI           = IMFreezeAI();
+    s.fixedDamageEnabled = IMFixedDamageEnabled();
+    s.fixedDamage        = IMFixedDamage();
+    s.damageMultiplier   = IMDamageMultiplier();
+    s.defenseMultiplier  = IMDefenseMultiplier();
+    return s;
+}
+
+void IMApplySettings(IMSettingsSnapshot s) {
+    IMSetGodMode(s.godMode);
+    IMSetOneHitKill(s.oneHitKill);
+    IMSetFreezeAll(s.freezeAll);
+    IMSetInfiniteEnergy(s.infiniteEnergy);
+    IMSetFreezeAI(s.freezeAI);
+    IMSetFixedDamageEnabled(s.fixedDamageEnabled);
+    IMSetFixedDamage(s.fixedDamage);
+    IMSetDamageMultiplier(s.damageMultiplier);
+    IMSetDefenseMultiplier(s.defenseMultiplier);
+}
 
 void IMRequestHeal(void) { atomic_store(&sHealRequested, true); }
 BOOL IMConsumeHealRequest(void) { return atomic_exchange(&sHealRequested, false); }

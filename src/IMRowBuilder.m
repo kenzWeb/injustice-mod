@@ -44,6 +44,38 @@
     return row;
 }
 
+- (NSArray<UIButton *> *)addButtonTrioRow:(NSString *)title
+                                   target:(id)target
+                                   action:(SEL)action {
+    UIView *row = [self pushRowOfHeight:46];
+    [self titleLabelIn:row width:120 y:13].text = title;
+
+    NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+    const CGFloat size = 34;
+    const CGFloat gap = 8;
+    CGFloat right = IMPanelWidth - IMPanelPadding;
+    CGFloat x = right - size * 3 - gap * 2;
+
+    for (NSInteger i = 0; i < 3; i++) {
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.frame = CGRectMake(x + (size + gap) * i, 6, size, size);
+        button.tag = i;
+        [button setTitle:[NSString stringWithFormat:@"%ld", (long)(i + 1)]
+                forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+        button.layer.cornerRadius = 8;
+        button.layer.cornerCurve = kCACornerCurveContinuous;
+        [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+        [row addSubview:button];
+        [buttons addObject:button];
+    }
+
+    [self addSeparator];
+    return buttons;
+}
+
 - (UIView *)addCustomRowOfHeight:(CGFloat)height {
     return [self pushRowOfHeight:height];
 }

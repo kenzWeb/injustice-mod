@@ -25,6 +25,9 @@ static IMHasEnoughFn         sOrigHasEnoughFunds;
 static IMHasEnoughFn         sOrigHasEnoughPower;
 static IMHasEnoughFn         sOrigHasEnoughEnergy;
 static IMHasEnoughFn         sOrigHasEnoughResource;
+typedef bool (*IMIsStunnedFn)(void *character, int stunType);
+
+static IMIsStunnedFn         sOrigIsStunned;
 static IMPowerPercentFn      sOrigGetPowerPercentage;
 static IMCurrentResourceFn   sOrigGetCurrentPower;
 static IMCurrentResourceFn   sOrigGetCurrentEnergy;
@@ -107,6 +110,13 @@ static float IMHookGetCurrentEnergy(void *character) {
     return sOrigGetCurrentEnergy(character);
 }
 
+static bool IMHookIsStunned(void *character, int stunType) {
+    if (!IMMasterOff() && IMFreezeAI() && character && !IMIsPlayerCharacter(character)) {
+        return true;
+    }
+    return sOrigIsStunned(character, stunType);
+}
+
 BOOL IMHooksInstall(void) {
     if (sInstalled) return YES;
 
@@ -126,6 +136,8 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    MSHookFunction(IMRuntimeAddress(RVA_IsStunned),
+                   (void *)IMHookIsStunned, (void **)&sOrigIsStunned);
     MSHookFunction(IMRuntimeAddress(RVA_GetPowerPercentage),
                    (void *)IMHookGetPowerPercentage, (void **)&sOrigGetPowerPercentage);
     MSHookFunction(IMRuntimeAddress(RVA_GetCurrentPower),

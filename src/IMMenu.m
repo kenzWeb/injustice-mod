@@ -2,6 +2,7 @@
 #import "IMOverlayWindow.h"
 #import "IMRowBuilder.h"
 #import "IMSettings.h"
+#import "IMPresets.h"
 #import "IMTheme.h"
 #import <math.h>
 
@@ -16,6 +17,13 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) UIScrollView      *scroll;
 @property (nonatomic, strong) UILabel           *readout;
 @property (nonatomic, strong) UILabel           *badge;
+@property (nonatomic, strong) UISwitch          *godSwitch;
+@property (nonatomic, strong) UISwitch          *oneHitSwitch;
+@property (nonatomic, strong) UISwitch          *freezeSwitch;
+@property (nonatomic, strong) UISwitch          *energySwitch;
+@property (nonatomic, strong) UISwitch          *freezeAISwitch;
+@property (nonatomic, strong) UISwitch          *fixedSwitch;
+@property (nonatomic, strong) NSArray<UIButton *> *loadButtons;
 @property (nonatomic, strong) IMValueRow        *damageRow;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
 @property (nonatomic, strong) IMValueRow        *fixedRow;
@@ -131,12 +139,16 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     IMRowBuilder *builder = [[IMRowBuilder alloc] initWithContainer:self.scroll];
     [self buildReadoutWithBuilder:builder];
 
-    [builder addSwitchRow:@"God mode (только я)"
-                   target:self action:@selector(onGodMode:) accent:NO];
-    [builder addSwitchRow:@"One-hit kill (враги)"
-                   target:self action:@selector(onOneHitKill:) accent:NO];
-    [builder addSwitchRow:@"Freeze HP (все)"
-                   target:self action:@selector(onFreeze:) accent:NO];
+    self.godSwitch = [builder addSwitchRow:@"God mode (только я)"
+                                    target:self action:@selector(onGodMode:) accent:NO];
+    self.oneHitSwitch = [builder addSwitchRow:@"One-hit kill (враги)"
+                                       target:self action:@selector(onOneHitKill:) accent:NO];
+    self.freezeSwitch = [builder addSwitchRow:@"Freeze HP (все)"
+                                       target:self action:@selector(onFreeze:) accent:NO];
+    self.freezeAISwitch = [builder addSwitchRow:@"Заморозить ИИ"
+                                         target:self action:@selector(onFreezeAI:) accent:NO];
+    [builder addCaption:@"противник не действует, но его можно бить"];
+    [builder addSeparator];
 
     self.damageRow = [builder addValueRow:@"Урон по врагам ×"
                                    target:self
@@ -155,8 +167,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addCaption:@"ползунок до 10, вручную — до 999999999"];
     [builder addSeparator];
 
-    [builder addSwitchRow:@"Фикс. урон по врагам"
-                   target:self action:@selector(onFixedDamage:) accent:NO];
+    self.fixedSwitch = [builder addSwitchRow:@"Фикс. урон по врагам"
+                                      target:self action:@selector(onFixedDamage:) accent:NO];
     self.fixedRow = [builder addValueRow:@"Урон за удар"
                                   target:self
                              fieldAction:@selector(onFixedField:)
@@ -167,8 +179,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addCaption:@"выключено — обычный урон × множитель"];
     [builder addSeparator];
 
-    [builder addSwitchRow:@"Бесконечная энергия"
-                   target:self action:@selector(onInfiniteEnergy:) accent:NO];
+    self.energySwitch = [builder addSwitchRow:@"Бесконечная энергия"
+                                       target:self action:@selector(onInfiniteEnergy:) accent:NO];
     [builder addCaption:@"супер всегда доступен, без ожидания между приёмами"];
     [builder addSeparator];
 
@@ -176,11 +188,18 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addButtonRow:@"Восстановить HP" target:self action:@selector(onHeal)];
     [builder addSwitchRow:@"HP на экране"
                    target:self action:@selector(onBadge:) accent:NO];
+
+    self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
+                                          target:self action:@selector(onPresetLoad:)];
+    [builder addButtonTrioRow:@"Сохранить в"
+                       target:self action:@selector(onPresetSave:)];
+
     [builder addSwitchRow:@"Master OFF"
                    target:self action:@selector(onMasterOff:) accent:YES];
     [builder addCaption:@"Master OFF — полностью ванильное поведение"];
 
     [self.fixedRow setActive:NO];
+    [self refreshPresetButtons];
     [self layoutPanelWithContentHeight:builder.cursor];
 }
 
@@ -286,6 +305,57 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onHeal                          { IMRequestHeal(); }
 - (void)onAutoWin                       { IMTriggerAutoWin(); }
 - (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
+- (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
+
+- (void)onPresetSave:(UIButton *)sender {
+    IMPresetSave(sender.tag);
+    [self refreshPresetButtons];
+    [self flashButton:sender];
+}
+
+- (void)onPresetLoad:(UIButton *)sender {
+    if (!IMPresetLoad(sender.tag)) return;
+    [self syncControlsFromSettings];
+    [self flashButton:sender];
+}
+
+- (void)flashButton:(UIButton *)button {
+    UIColor *original = button.backgroundColor;
+    button.backgroundColor = IMColorAccent();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        button.backgroundColor = original;
+    });
+}
+
+- (void)refreshPresetButtons {
+    for (UIButton *button in self.loadButtons) {
+        BOOL filled = IMPresetExists(button.tag);
+        [button setTitleColor:filled ? UIColor.whiteColor : IMColorDim()
+                     forState:UIControlStateNormal];
+        button.layer.borderWidth = filled ? 1.0 : 0.0;
+        button.layer.borderColor = IMColorAccent().CGColor;
+    }
+}
+
+- (void)syncControlsFromSettings {
+    IMSettingsSnapshot s = IMCaptureSettings();
+    self.godSwitch.on       = s.godMode;
+    self.oneHitSwitch.on    = s.oneHitKill;
+    self.freezeSwitch.on    = s.freezeAll;
+    self.energySwitch.on    = s.infiniteEnergy;
+    self.freezeAISwitch.on  = s.freezeAI;
+    self.fixedSwitch.on     = s.fixedDamageEnabled;
+    [self.fixedRow setActive:s.fixedDamageEnabled];
+
+    self.damageRow.field.text = [NSString stringWithFormat:@"%.2f", s.damageMultiplier];
+    self.damageRow.slider.value = (float)MIN(s.damageMultiplier, kMultiplierSliderMax);
+    self.defenseRow.field.text = [NSString stringWithFormat:@"%.2f", s.defenseMultiplier];
+    self.defenseRow.slider.value = (float)MIN(s.defenseMultiplier, kMultiplierSliderMax);
+    self.fixedRow.field.text = [NSString stringWithFormat:@"%lld", s.fixedDamage];
+    self.fixedRow.slider.value =
+        (float)MIN((double)s.fixedDamage, (double)self.fixedRow.slider.maximumValue);
+}
 - (void)onBadge:(UISwitch *)sender      { self.badgeEnabled = sender.isOn; }
 
 - (void)onFixedDamage:(UISwitch *)sender {

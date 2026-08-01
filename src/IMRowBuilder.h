@@ -25,6 +25,9 @@
                    decimals:(BOOL)decimals;
 - (UIButton *)addButtonRow:(NSString *)title target:(id)target action:(SEL)action;
 - (UILabel *)addCaption:(NSString *)text;
+- (NSArray<UIButton *> *)addButtonTrioRow:(NSString *)title
+                                   target:(id)target
+                                   action:(SEL)action;
 - (UIView *)addCustomRowOfHeight:(CGFloat)height;
 - (void)addSeparator;
 @end
