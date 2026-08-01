@@ -7,22 +7,29 @@
 #import <mach-o/dyld.h>
 #import <dlfcn.h>
 #import <stdatomic.h>
+#import <math.h>
 #import "offsets.h"
 
 // ---------------------------------------------------------------- state
 static uintptr_t gSlide = 0;
 static BOOL      gHooked = NO;
 
-static atomic_bool gGodMode;      // player never loses HP
-static atomic_bool gOneHitKill;   // enemies drop to 0
-static atomic_bool gFreezeAll;    // nobody's HP changes
+static atomic_bool gMasterOff;     // kill switch: behave exactly like vanilla
+static atomic_bool gGodMode;       // player never loses HP
+static atomic_bool gOneHitKill;    // enemies drop to 0
+static atomic_bool gFreezeAll;     // nobody's HP changes
+static atomic_bool gHealLatch;     // one-shot: next player write becomes MaxHealth
+
+// multipliers are held x100 so they can live in plain atomics
+static atomic_int  gDmgMulX100;    // damage dealt TO enemies
+static atomic_int  gDefMulX100;    // damage taken BY the player
 
 // last values seen by the hook — copied out, never dereferenced later
 static atomic_int   gPlayerHP;
 static atomic_int   gPlayerMax;
 static atomic_int   gEnemyHP;
 static atomic_int   gEnemyMax;
-static atomic_llong gLastSeenMs;  // written on the game thread, read on main
+static atomic_llong gLastSeenMs;   // written on the game thread, read on main
 
 // ---------------------------------------------------------------- helpers
 static const struct mach_header *gMainHeader = NULL;
@@ -30,6 +37,10 @@ static uintptr_t gTextLo = 0, gTextHi = 0, gImageHi = 0;
 
 static inline long long nowMs(void) {
     return (long long)(CACurrentMediaTime() * 1000.0);
+}
+
+static inline int clampi(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
 }
 
 static void computeImage(void) {
@@ -70,11 +81,13 @@ typedef void (*SetCurrentHealth_t)(void *self, int newHP);
 static SetCurrentHealth_t orig_SetCurrentHealth = NULL;
 
 static void hook_SetCurrentHealth(void *self, int newHP) {
-    int maxHP = 0;
-    if (self) maxHP = *(int *)((uintptr_t)self + OFF_MaxHealth);
+    if (!self) { orig_SetCurrentHealth(self, newHP); return; }
 
-    BOOL mine = isPlayerCharacter(self);
+    const int maxHP = *(int *)((uintptr_t)self + OFF_MaxHealth);
+    const int curHP = *(int *)((uintptr_t)self + OFF_CurrentHealth);
+    const BOOL mine = isPlayerCharacter(self);
 
+    // readout is passive, so it keeps working even with the kill switch on
     if (mine) {
         atomic_store(&gPlayerMax, maxHP);
         atomic_store(&gPlayerHP, newHP);
@@ -84,14 +97,33 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
     }
     atomic_store(&gLastSeenMs, nowMs());
 
-    if (atomic_load(&gFreezeAll)) return;                 // drop the write entirely
-    if (mine && atomic_load(&gGodMode))      newHP = maxHP;
-    if (!mine && atomic_load(&gOneHitKill))  newHP = 0;
+    if (atomic_load(&gMasterOff)) { orig_SetCurrentHealth(self, newHP); return; }
+    if (atomic_load(&gFreezeAll)) return;             // drop the write entirely
 
-    orig_SetCurrentHealth(self, newHP);
+    const int delta = curHP - newHP;                  // >0 damage, <0 heal
+
+    if (mine) {
+        if (atomic_load(&gGodMode)) {
+            newHP = maxHP;
+        } else if (atomic_exchange(&gHealLatch, false)) {
+            newHP = maxHP;                            // one-shot "heal to full"
+        } else if (delta > 0) {
+            int m = atomic_load(&gDefMulX100);
+            if (m != 100) newHP = curHP - (int)lround((double)delta * m / 100.0);
+        }
+    } else {
+        if (atomic_load(&gOneHitKill)) {
+            newHP = 0;
+        } else if (delta > 0) {
+            int m = atomic_load(&gDmgMulX100);
+            if (m != 100) newHP = curHP - (int)lround((double)delta * m / 100.0);
+        }
+    }
+
+    orig_SetCurrentHealth(self, clampi(newHP, 0, maxHP > 0 ? maxHP : newHP));
 }
 
-// ---------------------------------------------------------------- menu UI
+// ---------------------------------------------------------------- overlay
 // A full-screen overlay window would swallow every touch, leaving the game
 // visible and audible but completely dead. Returning nil from hitTest: for
 // points that do not land on our own controls makes UIKit fall through to the
@@ -105,14 +137,33 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
     if (hit == self || hit == self.rootViewController.view) return nil;
     return hit;
 }
+// must be YES, otherwise the numeric fields can never receive the keyboard
+- (BOOL)canBecomeKeyWindow { return YES; }
 @end
 
-@interface IMModMenu : NSObject
-@property (nonatomic, strong) UIWindow *window;
-@property (nonatomic, strong) UIView   *panel;
-@property (nonatomic, strong) UIButton *ball;
-@property (nonatomic, strong) UILabel  *hud;
-@property (nonatomic, strong) NSTimer  *ticker;
+static UIColor *IMAccent(void)  { return [UIColor colorWithRed:1.00 green:0.27 blue:0.23 alpha:1]; }
+static UIColor *IMDim(void)     { return [UIColor colorWithWhite:1 alpha:0.45]; }
+static UIColor *IMHair(void)    { return [UIColor colorWithWhite:1 alpha:0.10]; }
+
+static const CGFloat kPanelW = 292.0;
+static const CGFloat kPad    = 16.0;
+
+@interface IMModMenu : NSObject <UITextFieldDelegate>
+@property (nonatomic, strong) IMPassthroughWindow *window;
+@property (nonatomic, strong) UIVisualEffectView  *panel;
+@property (nonatomic, strong) UIScrollView        *scroll;
+@property (nonatomic, strong) UIVisualEffectView  *ball;
+@property (nonatomic, strong) UILabel   *hud;
+@property (nonatomic, strong) UILabel   *pill;      // compact readout next to the ball
+@property (nonatomic, strong) UISlider  *dmgSlider;
+@property (nonatomic, strong) UISlider  *defSlider;
+@property (nonatomic, strong) UITextField *dmgField;
+@property (nonatomic, strong) UITextField *defField;
+@property (nonatomic, strong) NSTimer   *ticker;
+@property (nonatomic, weak)   UIWindow  *prevKeyWindow;
+@property (nonatomic, assign) CGFloat    cursorY;
+@property (nonatomic, assign) BOOL       panelMoved;
+@property (nonatomic, assign) BOOL       pillOn;
 + (instancetype)shared;
 - (void)present;
 @end
@@ -149,95 +200,362 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
     self.window.rootViewController.view.backgroundColor = UIColor.clearColor;
     self.window.hidden = NO;
 
-    // the panel is added first so the ball sits on top of it
     [self buildPanel];
     [self buildBall];
-    [self.window.rootViewController.view addSubview:self.panel];
-    [self.window.rootViewController.view addSubview:self.ball];
+    UIView *root = self.window.rootViewController.view;
+    [root addSubview:self.panel];
+    [root addSubview:self.ball];
+    [root addSubview:self.pill];
 
-    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.1
+    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.12
                                                    target:self
                                                  selector:@selector(refresh)
                                                  userInfo:nil
                                                   repeats:YES];
 }
 
+#pragma mark - ball
+
 - (void)buildBall {
-    self.ball = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.ball.frame = CGRectMake(24, 120, 54, 54);
-    self.ball.backgroundColor = [UIColor colorWithRed:0.85 green:0.1 blue:0.1 alpha:0.85];
-    self.ball.layer.cornerRadius = 27;
-    self.ball.layer.borderWidth = 1.5;
-    self.ball.layer.borderColor = UIColor.whiteColor.CGColor;
-    [self.ball setTitle:@"MOD" forState:UIControlStateNormal];
-    self.ball.titleLabel.font = [UIFont boldSystemFontOfSize:13];
-    [self.ball addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
+    UIBlurEffect *fx = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
+    self.ball = [[UIVisualEffectView alloc] initWithEffect:fx];
+    self.ball.frame = CGRectMake(20, 110, 46, 46);
+    self.ball.layer.cornerRadius = 23;
+    self.ball.layer.cornerCurve = kCACornerCurveContinuous;
+    self.ball.clipsToBounds = YES;
+    self.ball.layer.borderWidth = 0.5;
+    self.ball.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.22].CGColor;
+
+    UIImageView *glyph = [[UIImageView alloc] initWithImage:
+        [UIImage systemImageNamed:@"bolt.fill"]];
+    glyph.tintColor = IMAccent();
+    glyph.contentMode = UIViewContentModeScaleAspectFit;
+    glyph.frame = CGRectMake(13, 13, 20, 20);
+    [self.ball.contentView addSubview:glyph];
+
+    UITapGestureRecognizer *tap =
+        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggle)];
+    [self.ball addGestureRecognizer:tap];
     [self.ball addGestureRecognizer:
-        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(drag:)]];
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragBall:)]];
+
+    // compact HP readout that rides next to the ball while the panel is closed
+    self.pill = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.pill.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightSemibold];
+    self.pill.textColor = UIColor.whiteColor;
+    self.pill.textAlignment = NSTextAlignmentCenter;
+    self.pill.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+    self.pill.layer.cornerRadius = 9;
+    self.pill.layer.masksToBounds = YES;
+    self.pill.hidden = YES;
+    self.pill.userInteractionEnabled = NO;
 }
 
-- (void)drag:(UIPanGestureRecognizer *)g {
+- (void)dragBall:(UIPanGestureRecognizer *)g {
     CGPoint d = [g translationInView:self.window];
     g.view.center = CGPointMake(g.view.center.x + d.x, g.view.center.y + d.y);
     [g setTranslation:CGPointZero inView:self.window];
+    [self layoutPill];
 }
 
-- (UISwitch *)rowAt:(CGFloat)y title:(NSString *)title action:(SEL)sel {
-    UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(14, y, 190, 30)];
-    l.text = title;
-    l.textColor = UIColor.whiteColor;
-    l.font = [UIFont systemFontOfSize:14];
-    [self.panel addSubview:l];
+- (void)layoutPill {
+    CGRect b = self.ball.frame;
+    self.pill.frame = CGRectMake(CGRectGetMaxX(b) + 6, CGRectGetMidY(b) - 9, 96, 18);
+}
 
-    UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(212, y - 2, 51, 31)];
-    sw.onTintColor = [UIColor colorWithRed:0.85 green:0.1 blue:0.1 alpha:1];
+#pragma mark - panel
+
+// Rows live in a scroll view: the game is landscape-only (~390pt tall) and the
+// full row stack is taller than that, so the panel must be able to scroll.
+- (UIView *)panelBody { return self.scroll ?: self.panel.contentView; }
+
+- (void)addSeparator {
+    UIView *s = [[UIView alloc] initWithFrame:CGRectMake(kPad, self.cursorY, kPanelW - kPad * 2, 0.5)];
+    s.backgroundColor = IMHair();
+    [[self panelBody] addSubview:s];
+    self.cursorY += 0.5;
+}
+
+- (UILabel *)rowLabel:(NSString *)t width:(CGFloat)w {
+    UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(kPad, self.cursorY + 11, w, 20)];
+    l.text = t;
+    l.textColor = UIColor.whiteColor;
+    l.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
+    [[self panelBody] addSubview:l];
+    return l;
+}
+
+- (UISwitch *)addSwitchRow:(NSString *)title action:(SEL)sel accent:(BOOL)accent {
+    [self rowLabel:title width:190];
+    UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
+    sw.transform = CGAffineTransformMakeScale(0.82, 0.82);
+    sw.center = CGPointMake(kPanelW - kPad - 21, self.cursorY + 21);
+    sw.onTintColor = accent ? IMAccent() : [UIColor colorWithRed:0.30 green:0.78 blue:0.42 alpha:1];
     [sw addTarget:self action:sel forControlEvents:UIControlEventValueChanged];
-    [self.panel addSubview:sw];
+    [[self panelBody] addSubview:sw];
+    self.cursorY += 42;
+    [self addSeparator];
     return sw;
 }
 
-- (void)buildPanel {
-    self.panel = [[UIView alloc] initWithFrame:CGRectMake(24, 184, 286, 214)];
-    self.panel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.94];
-    self.panel.layer.cornerRadius = 14;
-    self.panel.layer.borderWidth = 1;
-    self.panel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
-    self.panel.hidden = YES;
+// label + editable value on one line, slider underneath
+- (void)addMultiplierRow:(NSString *)title
+                   field:(UITextField **)outField
+                  slider:(UISlider **)outSlider
+             fieldAction:(SEL)fieldSel
+            sliderAction:(SEL)sliderSel
+{
+    [self rowLabel:title width:150];
 
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(14, 10, 258, 20)];
-    title.text = @"Injustice 2 — 6.7.1";
-    title.textColor = [UIColor colorWithWhite:1 alpha:0.6];
-    title.font = [UIFont boldSystemFontOfSize:12];
-    [self.panel addSubview:title];
+    UITextField *tf = [[UITextField alloc] initWithFrame:
+        CGRectMake(kPanelW - kPad - 76, self.cursorY + 8, 76, 26)];
+    tf.text = @"1.00";
+    tf.textAlignment = NSTextAlignmentRight;
+    tf.textColor = IMAccent();
+    tf.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
+    tf.keyboardType = UIKeyboardTypeDecimalPad;
+    tf.keyboardAppearance = UIKeyboardAppearanceDark;
+    tf.borderStyle = UITextBorderStyleNone;
+    tf.delegate = self;
+    tf.tintColor = IMAccent();
+    [tf addTarget:self action:fieldSel forControlEvents:UIControlEventEditingDidEnd];
 
-    self.hud = [[UILabel alloc] initWithFrame:CGRectMake(14, 32, 258, 40)];
-    self.hud.numberOfLines = 2;
-    self.hud.textColor = [UIColor colorWithRed:0.4 green:1 blue:0.5 alpha:1];
-    self.hud.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
-    self.hud.text = @"HP  --\nENEMY  --";
-    [self.panel addSubview:self.hud];
+    UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
+    bar.barStyle = UIBarStyleBlack;
+    bar.items = @[
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+                                                      target:nil action:nil],
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                      target:self action:@selector(dismissKeyboard)]
+    ];
+    [bar sizeToFit];
+    tf.inputAccessoryView = bar;
+    [[self panelBody] addSubview:tf];
 
-    [self rowAt:84  title:@"God mode (только я)"   action:@selector(god:)];
-    [self rowAt:126 title:@"One-hit kill (враги)"  action:@selector(ohk:)];
-    [self rowAt:168 title:@"Freeze HP (все)"       action:@selector(freeze:)];
+    UISlider *sl = [[UISlider alloc] initWithFrame:
+        CGRectMake(kPad, self.cursorY + 36, kPanelW - kPad * 2, 20)];
+    sl.minimumValue = 0.0;
+    sl.maximumValue = 10.0;
+    sl.value = 1.0;
+    sl.minimumTrackTintColor = IMAccent();
+    sl.maximumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.16];
+    [sl addTarget:self action:sliderSel forControlEvents:UIControlEventValueChanged];
+    [[self panelBody] addSubview:sl];
+
+    *outField = tf;
+    *outSlider = sl;
+    self.cursorY += 66;
+    [self addSeparator];
 }
 
-- (void)toggle { self.panel.hidden = !self.panel.hidden; }
+- (void)addButtonRow:(NSString *)title action:(SEL)sel {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    b.frame = CGRectMake(kPad, self.cursorY + 7, kPanelW - kPad * 2, 30);
+    [b setTitle:title forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+    b.layer.cornerRadius = 9;
+    b.layer.cornerCurve = kCACornerCurveContinuous;
+    [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
+    [[self panelBody] addSubview:b];
+    self.cursorY += 44;
+    [self addSeparator];
+}
+
+- (void)buildPanel {
+    UIBlurEffect *fx = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThickMaterialDark];
+    self.panel = [[UIVisualEffectView alloc] initWithEffect:fx];
+    self.panel.layer.cornerRadius = 20;
+    self.panel.layer.cornerCurve = kCACornerCurveContinuous;
+    self.panel.clipsToBounds = YES;
+    self.panel.layer.borderWidth = 0.5;
+    self.panel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.16].CGColor;
+    self.panel.hidden = YES;
+
+    self.cursorY = 0;
+
+    // -------- header: grabber + title, the whole strip drags the panel
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kPanelW, 44)];
+    [self.panel.contentView addSubview:header];
+
+    UIView *grab = [[UIView alloc] initWithFrame:CGRectMake(kPanelW / 2 - 18, 7, 36, 4)];
+    grab.backgroundColor = [UIColor colorWithWhite:1 alpha:0.22];
+    grab.layer.cornerRadius = 2;
+    [header addSubview:grab];
+
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(kPad, 17, 180, 18)];
+    title.text = @"INJUSTICE 2";
+    title.textColor = IMDim();
+    title.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    [header addSubview:title];
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.frame = CGRectMake(kPanelW - kPad - 22, 13, 22, 22);
+    [close setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
+    close.tintColor = IMDim();
+    [close addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
+    [header addSubview:close];
+
+    [header addGestureRecognizer:
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragPanel:)]];
+
+    UIView *hair = [[UIView alloc] initWithFrame:CGRectMake(0, 44, kPanelW, 0.5)];
+    hair.backgroundColor = IMHair();
+    [self.panel.contentView addSubview:hair];
+
+    // everything below the header scrolls
+    self.scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    self.scroll.showsVerticalScrollIndicator = YES;
+    self.scroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+    // without these the scroll view swallows the start of a slider drag
+    self.scroll.delaysContentTouches = NO;
+    self.scroll.canCancelContentTouches = NO;
+    [self.panel.contentView addSubview:self.scroll];
+
+    self.cursorY = 0;
+
+    // -------- live readout
+    self.hud = [[UILabel alloc] initWithFrame:
+        CGRectMake(kPad, self.cursorY + 10, kPanelW - kPad * 2, 40)];
+    self.hud.numberOfLines = 2;
+    self.hud.textColor = [UIColor colorWithRed:0.42 green:0.98 blue:0.55 alpha:1];
+    self.hud.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
+    self.hud.text = @"YOU    —\nENEMY  —";
+    [[self panelBody] addSubview:self.hud];
+    self.cursorY += 58;
+    [self addSeparator];
+
+    // -------- toggles
+    [self addSwitchRow:@"God mode (только я)"  action:@selector(god:)    accent:NO];
+    [self addSwitchRow:@"One-hit kill (враги)" action:@selector(ohk:)    accent:NO];
+    [self addSwitchRow:@"Freeze HP (все)"      action:@selector(freeze:) accent:NO];
+
+    // -------- multipliers
+    [self addMultiplierRow:@"Урон по врагам ×"
+                     field:&_dmgField slider:&_dmgSlider
+               fieldAction:@selector(dmgFieldDone:)
+              sliderAction:@selector(dmgSlid:)];
+    [self addMultiplierRow:@"Урон по мне ×"
+                     field:&_defField slider:&_defSlider
+               fieldAction:@selector(defFieldDone:)
+              sliderAction:@selector(defSlid:)];
+
+    // -------- actions
+    [self addButtonRow:@"Восстановить HP" action:@selector(healNow)];
+    [self addSwitchRow:@"HP на экране"    action:@selector(pillToggle:) accent:NO];
+    [self addSwitchRow:@"Master OFF"      action:@selector(master:)     accent:YES];
+
+    UILabel *note = [[UILabel alloc] initWithFrame:
+        CGRectMake(kPad, self.cursorY + 6, kPanelW - kPad * 2, 14)];
+    note.text = @"Master OFF — полностью ванильное поведение";
+    note.textColor = IMDim();
+    note.font = [UIFont systemFontOfSize:10];
+    [[self panelBody] addSubview:note];
+    self.cursorY += 26;
+
+    // fit inside the (landscape) screen: header + as much body as there is room for
+    const CGFloat headerH = 44.5;
+    CGFloat avail = self.window.bounds.size.height - 24 - headerH;
+    CGFloat bodyH = fmin(self.cursorY, fmax(120, avail));
+    self.scroll.frame = CGRectMake(0, headerH, kPanelW, bodyH);
+    self.scroll.contentSize = CGSizeMake(kPanelW, self.cursorY);
+    self.panel.frame = CGRectMake(20, 100, kPanelW, headerH + bodyH);
+}
+
+- (void)dragPanel:(UIPanGestureRecognizer *)g {
+    CGPoint d = [g translationInView:self.window];
+    self.panel.center = CGPointMake(self.panel.center.x + d.x, self.panel.center.y + d.y);
+    [g setTranslation:CGPointZero inView:self.window];
+    self.panelMoved = YES;
+}
+
+#pragma mark - actions
+
+- (void)toggle {
+    if (self.panel.hidden && !self.panelMoved) {
+        // first open: park the panel just under the ball, kept on screen
+        CGRect scr = self.window.bounds;
+        CGFloat x = fmin(fmax(8, CGRectGetMinX(self.ball.frame)), scr.size.width - kPanelW - 8);
+        CGFloat y = fmin(CGRectGetMaxY(self.ball.frame) + 10,
+                         scr.size.height - self.panel.frame.size.height - 8);
+        self.panel.frame = CGRectMake(x, fmax(8, y), kPanelW, self.panel.frame.size.height);
+    }
+    self.panel.hidden = !self.panel.hidden;
+    if (self.panel.hidden) [self dismissKeyboard];
+}
 
 - (void)god:(UISwitch *)s    { atomic_store(&gGodMode, s.isOn); }
 - (void)ohk:(UISwitch *)s    { atomic_store(&gOneHitKill, s.isOn); }
 - (void)freeze:(UISwitch *)s { atomic_store(&gFreezeAll, s.isOn); }
+- (void)master:(UISwitch *)s { atomic_store(&gMasterOff, s.isOn); }
+- (void)healNow              { atomic_store(&gHealLatch, true); }
+- (void)pillToggle:(UISwitch *)s { self.pillOn = s.isOn; }
+
+- (void)applyDmg:(float)v {
+    v = fmaxf(0.0f, fminf(v, 999.0f));
+    atomic_store(&gDmgMulX100, (int)lroundf(v * 100.0f));
+    self.dmgField.text = [NSString stringWithFormat:@"%.2f", v];
+    self.dmgSlider.value = fminf(v, self.dmgSlider.maximumValue);
+}
+
+- (void)applyDef:(float)v {
+    v = fmaxf(0.0f, fminf(v, 999.0f));
+    atomic_store(&gDefMulX100, (int)lroundf(v * 100.0f));
+    self.defField.text = [NSString stringWithFormat:@"%.2f", v];
+    self.defSlider.value = fminf(v, self.defSlider.maximumValue);
+}
+
+- (void)dmgSlid:(UISlider *)s      { [self applyDmg:s.value]; }
+- (void)defSlid:(UISlider *)s      { [self applyDef:s.value]; }
+- (void)dmgFieldDone:(UITextField *)f {
+    [self applyDmg:[[f.text stringByReplacingOccurrencesOfString:@"," withString:@"."] floatValue]];
+}
+- (void)defFieldDone:(UITextField *)f {
+    [self applyDef:[[f.text stringByReplacingOccurrencesOfString:@"," withString:@"."] floatValue]];
+}
+
+#pragma mark - keyboard
+
+// The overlay window is deliberately not key, so the game keeps its input.
+// Borrow key status only while a field is being edited, then hand it back.
+- (void)textFieldDidBeginEditing:(UITextField *)tf {
+    if (!self.window.isKeyWindow) {
+        for (UIWindow *w in self.window.windowScene.windows) {
+            if (w.isKeyWindow && w != self.window) { self.prevKeyWindow = w; break; }
+        }
+        [self.window makeKeyWindow];
+    }
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)tf {
+    UIWindow *prev = self.prevKeyWindow;
+    self.prevKeyWindow = nil;
+    if (prev) [prev makeKeyWindow];
+}
+
+- (void)dismissKeyboard {
+    [self.dmgField resignFirstResponder];
+    [self.defField resignFirstResponder];
+}
+
+#pragma mark - refresh
 
 - (void)refresh {
-    if (self.panel.hidden) return;
     BOOL stale = (nowMs() - atomic_load(&gLastSeenMs)) > 3000;
-    if (stale) {
-        self.hud.text = @"HP  --\nENEMY  --";
-        return;
+    int hp = atomic_load(&gPlayerHP), mx = atomic_load(&gPlayerMax);
+    int eh = atomic_load(&gEnemyHP),  em = atomic_load(&gEnemyMax);
+
+    self.pill.hidden = !(self.pillOn && self.panel.hidden);
+    if (!self.pill.hidden) {
+        [self layoutPill];
+        self.pill.text = stale ? @"—" : [NSString stringWithFormat:@"%d / %d", hp, mx];
     }
-    int hp = atomic_load(&gPlayerHP),  mx = atomic_load(&gPlayerMax);
-    int eh = atomic_load(&gEnemyHP),   em = atomic_load(&gEnemyMax);
-    self.hud.text = [NSString stringWithFormat:@"HP  %d / %d\nENEMY  %d / %d", hp, mx, eh, em];
+
+    if (self.panel.hidden) return;
+    self.hud.text = stale
+        ? @"YOU    —\nENEMY  —"
+        : [NSString stringWithFormat:@"YOU    %d / %d\nENEMY  %d / %d", hp, mx, eh, em];
 }
 @end
 
@@ -271,6 +589,8 @@ static void presentWhenReady(int attempt) {
 
 %ctor {
     @autoreleasepool {
+        atomic_store(&gDmgMulX100, 100);
+        atomic_store(&gDefMulX100, 100);
         computeImage();
         if (!versionMatches()) {
             NSLog(@"[IMMod] build mismatch — offsets are for 6.7.1 (1438123), "
