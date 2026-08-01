@@ -122,6 +122,16 @@ void IMForceRequirementsMet(void *outArray) {
 typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
+typedef void (*IMRequirementsResultFn)(void *context, void *resultFlag);
+static IMRequirementsResultFn sOrigRequirementsResult;
+
+static void IMHookRequirementsResult(void *context, void *resultFlag) {
+    if (resultFlag && !IMMasterOff() && IMBypassRequirements()) {
+        *(unsigned char *)resultFlag = 1;
+    }
+    sOrigRequirementsResult(context, resultFlag);
+}
+
 static void IMHookFightButtonClicked(void *menu, bool ignoreArtifactCharges) {
     if (menu && !IMMasterOff() && IMBypassRequirements()) {
         *(unsigned char *)((uintptr_t)menu + OFF_RequirementsUnmet) = 0;
@@ -175,6 +185,8 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookRequirementStates, &IMOrigRequirementStates);
     MSHookFunction(IMRuntimeAddress(RVA_OnFightButtonClicked),
                    (void *)IMHookFightButtonClicked, (void **)&sOrigFightButtonClicked);
+    MSHookFunction(IMRuntimeAddress(RVA_RequirementsResult),
+                   (void *)IMHookRequirementsResult, (void **)&sOrigRequirementsResult);
     MSHookFunction(IMRuntimeAddress(RVA_IsStunned),
                    (void *)IMHookIsStunned, (void **)&sOrigIsStunned);
     MSHookFunction(IMRuntimeAddress(RVA_GetPowerPercentage),
