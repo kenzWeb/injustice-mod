@@ -119,6 +119,16 @@ void IMForceRequirementsMet(void *outArray) {
     for (int i = 0; i < array->num; i++) array->data[i] = 1;
 }
 
+typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
+static IMFightClickedFn sOrigFightButtonClicked;
+
+static void IMHookFightButtonClicked(void *menu, bool ignoreArtifactCharges) {
+    if (menu && !IMMasterOff() && IMBypassRequirements()) {
+        *(unsigned char *)((uintptr_t)menu + OFF_RequirementsUnmet) = 0;
+    }
+    sOrigFightButtonClicked(menu, ignoreArtifactCharges);
+}
+
 __attribute__((naked)) static void IMHookRequirementStates(void) {
     __asm__ volatile(
         "stp  x29, x30, [sp, #-32]!                          \n"
@@ -163,6 +173,8 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
     MSHookFunction(IMRuntimeAddress(RVA_BattleRequirementStates),
                    (void *)IMHookRequirementStates, &IMOrigRequirementStates);
+    MSHookFunction(IMRuntimeAddress(RVA_OnFightButtonClicked),
+                   (void *)IMHookFightButtonClicked, (void **)&sOrigFightButtonClicked);
     MSHookFunction(IMRuntimeAddress(RVA_IsStunned),
                    (void *)IMHookIsStunned, (void **)&sOrigIsStunned);
     MSHookFunction(IMRuntimeAddress(RVA_GetPowerPercentage),
