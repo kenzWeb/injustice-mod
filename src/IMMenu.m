@@ -1,0 +1,385 @@
+#import "IMMenu.h"
+#import "IMOverlayWindow.h"
+#import "IMRowBuilder.h"
+#import "IMSettings.h"
+#import "IMTheme.h"
+#import <math.h>
+
+static const CGFloat kBallSize = 46.0;
+static const CGFloat kMultiplierSliderMax = 10.0;
+static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
+
+@interface IMMenu () <UITextFieldDelegate>
+@property (nonatomic, strong) IMOverlayWindow   *window;
+@property (nonatomic, strong) UIVisualEffectView *panel;
+@property (nonatomic, strong) UIVisualEffectView *ball;
+@property (nonatomic, strong) UIScrollView      *scroll;
+@property (nonatomic, strong) UILabel           *readout;
+@property (nonatomic, strong) UILabel           *badge;
+@property (nonatomic, strong) IMValueRow        *damageRow;
+@property (nonatomic, strong) IMValueRow        *defenseRow;
+@property (nonatomic, strong) IMValueRow        *fixedRow;
+@property (nonatomic, strong) NSTimer           *ticker;
+@property (nonatomic, weak)   UIWindow          *previousKeyWindow;
+@property (nonatomic, assign) BOOL               panelMoved;
+@property (nonatomic, assign) BOOL               badgeEnabled;
+@end
+
+@implementation IMMenu
+
++ (instancetype)shared {
+    static IMMenu *instance;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ instance = [IMMenu new]; });
+    return instance;
+}
+
+- (UIWindowScene *)activeScene {
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class] &&
+            scene.activationState == UISceneActivationStateForegroundActive) {
+            return (UIWindowScene *)scene;
+        }
+    }
+    return nil;
+}
+
+- (BOOL)presentIfPossible {
+    if (self.window) return YES;
+
+    UIWindowScene *scene = [self activeScene];
+    if (!scene) return NO;
+
+    self.window = [[IMOverlayWindow alloc] initWithWindowScene:scene];
+    self.window.frame = scene.coordinateSpace.bounds;
+    self.window.windowLevel = UIWindowLevelAlert + 100;
+    self.window.backgroundColor = UIColor.clearColor;
+    self.window.rootViewController = [UIViewController new];
+    self.window.rootViewController.view.backgroundColor = UIColor.clearColor;
+    self.window.hidden = NO;
+
+    [self buildPanel];
+    [self buildBall];
+
+    UIView *root = self.window.rootViewController.view;
+    [root addSubview:self.panel];
+    [root addSubview:self.ball];
+    [root addSubview:self.badge];
+
+    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.12
+                                                   target:self
+                                                 selector:@selector(refresh)
+                                                 userInfo:nil
+                                                  repeats:YES];
+    return YES;
+}
+
+- (void)buildBall {
+    UIBlurEffect *effect =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark];
+    self.ball = [[UIVisualEffectView alloc] initWithEffect:effect];
+    self.ball.frame = CGRectMake(20, 110, kBallSize, kBallSize);
+    self.ball.layer.cornerRadius = kBallSize / 2;
+    self.ball.layer.cornerCurve = kCACornerCurveContinuous;
+    self.ball.clipsToBounds = YES;
+    self.ball.layer.borderWidth = 0.5;
+    self.ball.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.22].CGColor;
+
+    UIImageView *glyph = [[UIImageView alloc]
+        initWithImage:[UIImage systemImageNamed:@"bolt.fill"]];
+    glyph.tintColor = IMColorAccent();
+    glyph.contentMode = UIViewContentModeScaleAspectFit;
+    glyph.frame = CGRectMake(13, 13, 20, 20);
+    [self.ball.contentView addSubview:glyph];
+
+    [self.ball addGestureRecognizer:
+        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(togglePanel)]];
+    [self.ball addGestureRecognizer:
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragBall:)]];
+
+    self.badge = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.badge.font = [UIFont monospacedDigitSystemFontOfSize:11
+                                                       weight:UIFontWeightSemibold];
+    self.badge.textColor = UIColor.whiteColor;
+    self.badge.textAlignment = NSTextAlignmentCenter;
+    self.badge.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55];
+    self.badge.layer.cornerRadius = 9;
+    self.badge.layer.masksToBounds = YES;
+    self.badge.userInteractionEnabled = NO;
+    self.badge.hidden = YES;
+}
+
+- (void)buildPanel {
+    UIBlurEffect *effect =
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThickMaterialDark];
+    self.panel = [[UIVisualEffectView alloc] initWithEffect:effect];
+    self.panel.layer.cornerRadius = 20;
+    self.panel.layer.cornerCurve = kCACornerCurveContinuous;
+    self.panel.clipsToBounds = YES;
+    self.panel.layer.borderWidth = 0.5;
+    self.panel.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.16].CGColor;
+    self.panel.hidden = YES;
+
+    [self buildHeader];
+
+    self.scroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    self.scroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+    self.scroll.delaysContentTouches = NO;
+    self.scroll.canCancelContentTouches = NO;
+    [self.panel.contentView addSubview:self.scroll];
+
+    IMRowBuilder *builder = [[IMRowBuilder alloc] initWithContainer:self.scroll];
+    [self buildReadoutWithBuilder:builder];
+
+    [builder addSwitchRow:@"God mode (только я)"
+                   target:self action:@selector(onGodMode:) accent:NO];
+    [builder addSwitchRow:@"One-hit kill (враги)"
+                   target:self action:@selector(onOneHitKill:) accent:NO];
+    [builder addSwitchRow:@"Freeze HP (все)"
+                   target:self action:@selector(onFreeze:) accent:NO];
+
+    self.damageRow = [builder addValueRow:@"Урон по врагам ×"
+                                   target:self
+                              fieldAction:@selector(onDamageField:)
+                             sliderAction:@selector(onDamageSlider:)
+                                    value:1.0
+                                 maxValue:kMultiplierSliderMax
+                                 decimals:YES];
+    self.defenseRow = [builder addValueRow:@"Урон по мне ×"
+                                    target:self
+                               fieldAction:@selector(onDefenseField:)
+                              sliderAction:@selector(onDefenseSlider:)
+                                     value:1.0
+                                  maxValue:kMultiplierSliderMax
+                                  decimals:YES];
+    [builder addCaption:@"ползунок до 10, вручную — до 999999999"];
+    [builder addSeparator];
+
+    [builder addSwitchRow:@"Фикс. урон по врагам"
+                   target:self action:@selector(onFixedDamage:) accent:NO];
+    self.fixedRow = [builder addValueRow:@"Урон за удар"
+                                  target:self
+                             fieldAction:@selector(onFixedField:)
+                            sliderAction:@selector(onFixedSlider:)
+                                   value:IMFixedDamage()
+                                maxValue:kDefaultFixedDamageSliderMax
+                                decimals:NO];
+    [builder addCaption:@"выключено — обычный урон × множитель"];
+    [builder addSeparator];
+
+    [builder addButtonRow:@"Восстановить HP" target:self action:@selector(onHeal)];
+    [builder addSwitchRow:@"HP на экране"
+                   target:self action:@selector(onBadge:) accent:NO];
+    [builder addSwitchRow:@"Master OFF"
+                   target:self action:@selector(onMasterOff:) accent:YES];
+    [builder addCaption:@"Master OFF — полностью ванильное поведение"];
+
+    [self.fixedRow setActive:NO];
+    [self layoutPanelWithContentHeight:builder.cursor];
+}
+
+- (void)buildHeader {
+    UIView *header = [[UIView alloc] initWithFrame:
+        CGRectMake(0, 0, IMPanelWidth, IMHeaderHeight)];
+    [self.panel.contentView addSubview:header];
+
+    UIView *grabber = [[UIView alloc] initWithFrame:
+        CGRectMake(IMPanelWidth / 2 - 18, 7, 36, 4)];
+    grabber.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.22];
+    grabber.layer.cornerRadius = 2;
+    [header addSubview:grabber];
+
+    UILabel *title = [[UILabel alloc] initWithFrame:
+        CGRectMake(IMPanelPadding, 17, 180, 18)];
+    title.text = @"INJUSTICE 2";
+    title.textColor = IMColorDim();
+    title.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    [header addSubview:title];
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.frame = CGRectMake(IMPanelWidth - IMPanelPadding - 22, 13, 22, 22);
+    [close setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
+    close.tintColor = IMColorDim();
+    [close addTarget:self action:@selector(togglePanel)
+        forControlEvents:UIControlEventTouchUpInside];
+    [header addSubview:close];
+
+    [header addGestureRecognizer:
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragPanel:)]];
+
+    UIView *hairline = [[UIView alloc] initWithFrame:
+        CGRectMake(0, IMHeaderHeight, IMPanelWidth, 0.5)];
+    hairline.backgroundColor = IMColorHairline();
+    [self.panel.contentView addSubview:hairline];
+}
+
+- (void)buildReadoutWithBuilder:(IMRowBuilder *)builder {
+    UIView *row = [builder addCustomRowOfHeight:58.0];
+
+    self.readout = [[UILabel alloc] initWithFrame:
+        CGRectMake(IMPanelPadding, 9, IMPanelWidth - IMPanelPadding * 2, 40)];
+    self.readout.numberOfLines = 2;
+    self.readout.textColor = IMColorReadout();
+    self.readout.font = IMFontReadout();
+    self.readout.text = @"YOU    —\nENEMY  —";
+    [row addSubview:self.readout];
+
+    [builder addSeparator];
+}
+
+- (void)layoutPanelWithContentHeight:(CGFloat)contentHeight {
+    const CGFloat headerHeight = IMHeaderHeight + 0.5;
+    CGFloat available = self.window.bounds.size.height - 24 - headerHeight;
+    CGFloat bodyHeight = MIN(contentHeight, MAX(120.0, available));
+
+    self.scroll.frame = CGRectMake(0, headerHeight, IMPanelWidth, bodyHeight);
+    self.scroll.contentSize = CGSizeMake(IMPanelWidth, contentHeight);
+    self.panel.frame = CGRectMake(20, 100, IMPanelWidth, headerHeight + bodyHeight);
+}
+
+- (void)dragBall:(UIPanGestureRecognizer *)gesture {
+    CGPoint delta = [gesture translationInView:self.window];
+    gesture.view.center = CGPointMake(gesture.view.center.x + delta.x,
+                                      gesture.view.center.y + delta.y);
+    [gesture setTranslation:CGPointZero inView:self.window];
+    [self layoutBadge];
+}
+
+- (void)dragPanel:(UIPanGestureRecognizer *)gesture {
+    CGPoint delta = [gesture translationInView:self.window];
+    self.panel.center = CGPointMake(self.panel.center.x + delta.x,
+                                    self.panel.center.y + delta.y);
+    [gesture setTranslation:CGPointZero inView:self.window];
+    self.panelMoved = YES;
+}
+
+- (void)layoutBadge {
+    CGRect ball = self.ball.frame;
+    self.badge.frame = CGRectMake(CGRectGetMaxX(ball) + 6,
+                                  CGRectGetMidY(ball) - 9, 104, 18);
+}
+
+- (void)togglePanel {
+    if (self.panel.hidden && !self.panelMoved) {
+        CGRect screen = self.window.bounds;
+        CGFloat x = MIN(MAX(8.0, CGRectGetMinX(self.ball.frame)),
+                        screen.size.width - IMPanelWidth - 8.0);
+        CGFloat y = MIN(CGRectGetMaxY(self.ball.frame) + 10.0,
+                        screen.size.height - self.panel.frame.size.height - 8.0);
+        self.panel.frame = CGRectMake(x, MAX(8.0, y),
+                                      IMPanelWidth, self.panel.frame.size.height);
+    }
+    self.panel.hidden = !self.panel.hidden;
+    if (self.panel.hidden) [self dismissKeyboard];
+}
+
+- (void)onGodMode:(UISwitch *)sender    { IMSetGodMode(sender.isOn); }
+- (void)onOneHitKill:(UISwitch *)sender { IMSetOneHitKill(sender.isOn); }
+- (void)onFreeze:(UISwitch *)sender     { IMSetFreezeAll(sender.isOn); }
+- (void)onMasterOff:(UISwitch *)sender  { IMSetMasterOff(sender.isOn); }
+- (void)onHeal                          { IMRequestHeal(); }
+- (void)onBadge:(UISwitch *)sender      { self.badgeEnabled = sender.isOn; }
+
+- (void)onFixedDamage:(UISwitch *)sender {
+    IMSetFixedDamageEnabled(sender.isOn);
+    [self.fixedRow setActive:sender.isOn];
+}
+
+- (double)parseField:(UITextField *)field {
+    NSString *text = [field.text stringByReplacingOccurrencesOfString:@","
+                                                           withString:@"."];
+    return text.doubleValue;
+}
+
+- (void)applyDamageMultiplier:(double)value {
+    IMSetDamageMultiplier(value);
+    double applied = IMDamageMultiplier();
+    self.damageRow.field.text = [NSString stringWithFormat:@"%.2f", applied];
+    self.damageRow.slider.value = (float)MIN(applied, kMultiplierSliderMax);
+}
+
+- (void)applyDefenseMultiplier:(double)value {
+    IMSetDefenseMultiplier(value);
+    double applied = IMDefenseMultiplier();
+    self.defenseRow.field.text = [NSString stringWithFormat:@"%.2f", applied];
+    self.defenseRow.slider.value = (float)MIN(applied, kMultiplierSliderMax);
+}
+
+- (void)applyFixedDamage:(double)value {
+    IMSetFixedDamage((long long)llround(value));
+    long long applied = IMFixedDamage();
+    self.fixedRow.field.text = [NSString stringWithFormat:@"%lld", applied];
+    self.fixedRow.slider.value =
+        (float)MIN((double)applied, (double)self.fixedRow.slider.maximumValue);
+}
+
+- (void)onDamageSlider:(UISlider *)sender  { [self applyDamageMultiplier:sender.value]; }
+- (void)onDefenseSlider:(UISlider *)sender { [self applyDefenseMultiplier:sender.value]; }
+- (void)onFixedSlider:(UISlider *)sender   { [self applyFixedDamage:sender.value]; }
+
+- (void)onDamageField:(UITextField *)sender  { [self applyDamageMultiplier:[self parseField:sender]]; }
+- (void)onDefenseField:(UITextField *)sender { [self applyDefenseMultiplier:[self parseField:sender]]; }
+- (void)onFixedField:(UITextField *)sender   { [self applyFixedDamage:[self parseField:sender]]; }
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    if (self.window.isKeyWindow) return;
+    for (UIWindow *window in self.window.windowScene.windows) {
+        if (window.isKeyWindow && window != self.window) {
+            self.previousKeyWindow = window;
+            break;
+        }
+    }
+    [self.window makeKeyWindow];
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    UIWindow *previous = self.previousKeyWindow;
+    self.previousKeyWindow = nil;
+    [previous makeKeyWindow];
+}
+
+- (void)dismissKeyboard {
+    [self.damageRow dismissKeyboard];
+    [self.defenseRow dismissKeyboard];
+    [self.fixedRow dismissKeyboard];
+}
+
+- (void)refresh {
+    IMHealthSnapshot health = IMReadHealth();
+
+    self.badge.hidden = !(self.badgeEnabled && self.panel.hidden);
+    if (!self.badge.hidden) {
+        [self layoutBadge];
+        self.badge.text = health.stale
+            ? @"—"
+            : [NSString stringWithFormat:@"%d / %d", health.playerHP, health.playerMax];
+    }
+
+    if (self.panel.hidden) return;
+
+    if (health.enemyMax > 0 && !self.fixedRow.field.isEditing &&
+        fabs(self.fixedRow.slider.maximumValue - (double)health.enemyMax) > 1.0) {
+        self.fixedRow.slider.maximumValue = (float)health.enemyMax;
+        self.fixedRow.slider.value =
+            (float)MIN((double)IMFixedDamage(), (double)health.enemyMax);
+    }
+
+    self.readout.text = health.stale
+        ? @"YOU    —\nENEMY  —"
+        : [NSString stringWithFormat:@"YOU    %d / %d\nENEMY  %d / %d",
+           health.playerHP, health.playerMax, health.enemyHP, health.enemyMax];
+}
+
+@end
+
+static void IMMenuAttempt(int attempt) {
+    if (attempt > 60) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (![[IMMenu shared] presentIfPossible]) IMMenuAttempt(attempt + 1);
+    });
+}
+
+void IMMenuPresentWhenReady(void) {
+    IMMenuAttempt(0);
+}
