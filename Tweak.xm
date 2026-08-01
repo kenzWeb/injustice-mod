@@ -92,6 +92,21 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
 }
 
 // ---------------------------------------------------------------- menu UI
+// A full-screen overlay window would swallow every touch, leaving the game
+// visible and audible but completely dead. Returning nil from hitTest: for
+// points that do not land on our own controls makes UIKit fall through to the
+// window underneath, so only the ball and the panel take input.
+@interface IMPassthroughWindow : UIWindow
+@end
+
+@implementation IMPassthroughWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    if (hit == self || hit == self.rootViewController.view) return nil;
+    return hit;
+}
+@end
+
 @interface IMModMenu : NSObject
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) UIView   *panel;
@@ -126,7 +141,7 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
     UIWindowScene *scene = [self activeScene];
     if (!scene) return;
 
-    self.window = [[UIWindow alloc] initWithWindowScene:scene];
+    self.window = [[IMPassthroughWindow alloc] initWithWindowScene:scene];
     self.window.frame = UIScreen.mainScreen.bounds;
     self.window.windowLevel = UIWindowLevelAlert + 100;
     self.window.backgroundColor = UIColor.clearColor;
@@ -147,7 +162,6 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
                                                   repeats:YES];
 }
 
-// only the menu subviews should swallow touches, the game keeps the rest
 - (void)buildBall {
     self.ball = [UIButton buttonWithType:UIButtonTypeCustom];
     self.ball.frame = CGRectMake(24, 120, 54, 54);
