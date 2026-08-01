@@ -13,8 +13,6 @@
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-THEOS="${THEOS:-$HOME/theos-roothide}"
-export THEOS
 
 DO_CLEAN=0
 DO_PULL=0
@@ -31,21 +29,45 @@ red()  { printf '\033[1;31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[1;32m%s\033[0m\n' "$*"; }
 ylw()  { printf '\033[1;33m%s\033[0m\n' "$*"; }
 
-# ---------------------------------------------------------------- prerequisites
+# ---------------------------------------------------------------- locate Theos
+# The roothide fork is required — stock Theos has no 'roothide' packaging
+# scheme. Rather than trusting $THEOS (a stale export in ~/.zprofile can point
+# at a Theos that isn't there), look for the fork's marker file and pick the
+# first install that actually has it.
+is_roothide() { [ -f "$1/vendor/mod/roothide/package/deb.mk" ]; }
+
+CHOSEN=""
+for cand in "${THEOS:-}" "$HOME/theos-roothide" "$HOME/theos"; do
+    [ -n "$cand" ] || continue
+    if is_roothide "$cand"; then CHOSEN="$cand"; break; fi
+done
+
+if [ -n "${THEOS:-}" ] && [ -n "$CHOSEN" ] && [ "$CHOSEN" != "$THEOS" ]; then
+    ylw "note: \$THEOS points at $THEOS, which is not a roothide Theos — using $CHOSEN"
+fi
+
 missing=0
-if [ ! -d "$THEOS" ]; then
-    red "Theos not found at $THEOS"
+if [ -z "$CHOSEN" ]; then
+    red "No roothide Theos found (checked \$THEOS, ~/theos-roothide, ~/theos)"
     cat <<EOF
 
-The roothide fork is required — stock Theos has no 'roothide' packaging scheme:
+Stock Theos has no 'roothide' packaging scheme. Install the fork:
 
   brew install ldid xz
   git clone --recursive https://github.com/roothide/theos ~/theos-roothide
 
+If ~/theos-roothide already exists but is incomplete:
+
+  git -C ~/theos-roothide submodule update --init --recursive
+
 EOF
     missing=1
 fi
-if [ -d "$THEOS" ] && [ ! -f "$THEOS/vendor/include/substrate.h" ]; then
+
+THEOS="$CHOSEN"
+export THEOS
+
+if [ -n "$THEOS" ] && [ ! -f "$THEOS/vendor/include/substrate.h" ]; then
     red "substrate.h missing — Theos submodules are not checked out"
     echo "  git -C $THEOS submodule update --init --recursive"
     missing=1
