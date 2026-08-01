@@ -24,6 +24,9 @@ static atomic_bool gHealLatch;     // one-shot: next player write becomes MaxHea
 static atomic_int  gDmgMulX100;    // damage dealt TO enemies
 static atomic_int  gDefMulX100;    // damage taken BY the player
 
+static atomic_bool gFixedDmgOn;    // exact damage per hit, overrides gDmgMulX100
+static atomic_int  gFixedDmg;
+
 // last values seen by the hook — copied out, never dereferenced later
 static atomic_int   gPlayerHP;
 static atomic_int   gPlayerMax;
@@ -115,8 +118,12 @@ static void hook_SetCurrentHealth(void *self, int newHP) {
         if (atomic_load(&gOneHitKill)) {
             newHP = 0;
         } else if (delta > 0) {
-            int m = atomic_load(&gDmgMulX100);
-            if (m != 100) newHP = curHP - (int)lround((double)delta * m / 100.0);
+            if (atomic_load(&gFixedDmgOn)) {
+                newHP = curHP - atomic_load(&gFixedDmg);   // exact hit, ignores the multiplier
+            } else {
+                int m = atomic_load(&gDmgMulX100);
+                if (m != 100) newHP = curHP - (int)lround((double)delta * m / 100.0);
+            }
         }
     }
 
@@ -157,8 +164,10 @@ static const CGFloat kPad    = 16.0;
 @property (nonatomic, strong) UILabel   *pill;      // compact readout next to the ball
 @property (nonatomic, strong) UISlider  *dmgSlider;
 @property (nonatomic, strong) UISlider  *defSlider;
+@property (nonatomic, strong) UISlider  *fixSlider;
 @property (nonatomic, strong) UITextField *dmgField;
 @property (nonatomic, strong) UITextField *defField;
+@property (nonatomic, strong) UITextField *fixField;
 @property (nonatomic, strong) NSTimer   *ticker;
 @property (nonatomic, weak)   UIWindow  *prevKeyWindow;
 @property (nonatomic, assign) CGFloat    cursorY;
@@ -299,21 +308,25 @@ static const CGFloat kPad    = 16.0;
 }
 
 // label + editable value on one line, slider underneath
-- (void)addMultiplierRow:(NSString *)title
-                   field:(UITextField **)outField
-                  slider:(UISlider **)outSlider
-             fieldAction:(SEL)fieldSel
-            sliderAction:(SEL)sliderSel
+- (void)addValueRow:(NSString *)title
+              field:(UITextField **)outField
+             slider:(UISlider **)outSlider
+        fieldAction:(SEL)fieldSel
+       sliderAction:(SEL)sliderSel
+              value:(float)initial
+                max:(float)maxV
+           decimals:(BOOL)dec
 {
     [self rowLabel:title width:150];
 
     UITextField *tf = [[UITextField alloc] initWithFrame:
-        CGRectMake(kPanelW - kPad - 76, self.cursorY + 8, 76, 26)];
-    tf.text = @"1.00";
+        CGRectMake(kPanelW - kPad - 90, self.cursorY + 8, 90, 26)];
+    tf.text = dec ? [NSString stringWithFormat:@"%.2f", initial]
+                  : [NSString stringWithFormat:@"%d", (int)initial];
     tf.textAlignment = NSTextAlignmentRight;
     tf.textColor = IMAccent();
     tf.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
-    tf.keyboardType = UIKeyboardTypeDecimalPad;
+    tf.keyboardType = dec ? UIKeyboardTypeDecimalPad : UIKeyboardTypeNumberPad;
     tf.keyboardAppearance = UIKeyboardAppearanceDark;
     tf.borderStyle = UITextBorderStyleNone;
     tf.delegate = self;
@@ -335,8 +348,8 @@ static const CGFloat kPad    = 16.0;
     UISlider *sl = [[UISlider alloc] initWithFrame:
         CGRectMake(kPad, self.cursorY + 36, kPanelW - kPad * 2, 20)];
     sl.minimumValue = 0.0;
-    sl.maximumValue = 10.0;
-    sl.value = 1.0;
+    sl.maximumValue = maxV;
+    sl.value = fminf(initial, maxV);
     sl.minimumTrackTintColor = IMAccent();
     sl.maximumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.16];
     [sl addTarget:self action:sliderSel forControlEvents:UIControlEventValueChanged];
@@ -432,14 +445,32 @@ static const CGFloat kPad    = 16.0;
     [self addSwitchRow:@"Freeze HP (все)"      action:@selector(freeze:) accent:NO];
 
     // -------- multipliers
-    [self addMultiplierRow:@"Урон по врагам ×"
-                     field:&_dmgField slider:&_dmgSlider
-               fieldAction:@selector(dmgFieldDone:)
-              sliderAction:@selector(dmgSlid:)];
-    [self addMultiplierRow:@"Урон по мне ×"
-                     field:&_defField slider:&_defSlider
-               fieldAction:@selector(defFieldDone:)
-              sliderAction:@selector(defSlid:)];
+    [self addValueRow:@"Урон по врагам ×"
+                field:&_dmgField slider:&_dmgSlider
+          fieldAction:@selector(dmgFieldDone:)
+         sliderAction:@selector(dmgSlid:)
+                value:1.0 max:10.0 decimals:YES];
+    [self addValueRow:@"Урон по мне ×"
+                field:&_defField slider:&_defSlider
+          fieldAction:@selector(defFieldDone:)
+         sliderAction:@selector(defSlid:)
+                value:1.0 max:10.0 decimals:YES];
+
+    // -------- exact damage per hit
+    [self addSwitchRow:@"Фикс. урон по врагам" action:@selector(fixOn:) accent:NO];
+    [self addValueRow:@"Урон за удар"
+                field:&_fixField slider:&_fixSlider
+          fieldAction:@selector(fixFieldDone:)
+         sliderAction:@selector(fixSlid:)
+                value:1000 max:20000 decimals:NO];
+    UILabel *hint = [[UILabel alloc] initWithFrame:
+        CGRectMake(kPad, self.cursorY + 2, kPanelW - kPad * 2, 14)];
+    hint.text = @"перекрывает множитель; шкала — по HP противника";
+    hint.textColor = IMDim();
+    hint.font = [UIFont systemFontOfSize:10];
+    [[self panelBody] addSubview:hint];
+    self.cursorY += 18;
+    [self addSeparator];
 
     // -------- actions
     [self addButtonRow:@"Восстановить HP" action:@selector(healNow)];
@@ -506,6 +537,18 @@ static const CGFloat kPad    = 16.0;
     self.defSlider.value = fminf(v, self.defSlider.maximumValue);
 }
 
+- (void)fixOn:(UISwitch *)s { atomic_store(&gFixedDmgOn, s.isOn); }
+
+- (void)applyFix:(float)v {
+    int iv = (int)lroundf(fmaxf(0.0f, fminf(v, 9999999.0f)));
+    atomic_store(&gFixedDmg, iv);
+    self.fixField.text = [NSString stringWithFormat:@"%d", iv];
+    self.fixSlider.value = fminf((float)iv, self.fixSlider.maximumValue);
+}
+
+- (void)fixSlid:(UISlider *)s      { [self applyFix:s.value]; }
+- (void)fixFieldDone:(UITextField *)f { [self applyFix:[f.text floatValue]]; }
+
 - (void)dmgSlid:(UISlider *)s      { [self applyDmg:s.value]; }
 - (void)defSlid:(UISlider *)s      { [self applyDef:s.value]; }
 - (void)dmgFieldDone:(UITextField *)f {
@@ -537,6 +580,7 @@ static const CGFloat kPad    = 16.0;
 - (void)dismissKeyboard {
     [self.dmgField resignFirstResponder];
     [self.defField resignFirstResponder];
+    [self.fixField resignFirstResponder];
 }
 
 #pragma mark - refresh
@@ -553,6 +597,15 @@ static const CGFloat kPad    = 16.0;
     }
 
     if (self.panel.hidden) return;
+
+    // make the fixed-damage slider span the opponent's actual health bar, so the
+    // range stays meaningful instead of an arbitrary constant
+    if (em > 0 && fabsf(self.fixSlider.maximumValue - (float)em) > 1.0f
+        && !self.fixField.isEditing) {
+        self.fixSlider.maximumValue = (float)em;
+        self.fixSlider.value = fminf((float)atomic_load(&gFixedDmg), (float)em);
+    }
+
     self.hud.text = stale
         ? @"YOU    —\nENEMY  —"
         : [NSString stringWithFormat:@"YOU    %d / %d\nENEMY  %d / %d", hp, mx, eh, em];
@@ -591,6 +644,7 @@ static void presentWhenReady(int attempt) {
     @autoreleasepool {
         atomic_store(&gDmgMulX100, 100);
         atomic_store(&gDefMulX100, 100);
+        atomic_store(&gFixedDmg, 1000);
         computeImage();
         if (!versionMatches()) {
             NSLog(@"[IMMod] build mismatch — offsets are for 6.7.1 (1438123), "
