@@ -116,6 +116,53 @@ Layout компонента подтверждён напрямую, `x0` в exe
 Приёмы в этой игре ограничены **стоимостью ресурса, а не таймером**, поэтому
 снятие гейта убирает и «ожидание между приёмами» — отдельного кулдауна нет.
 
+### Требования испытаний
+
+Требование описано структурой `FBattleRequirementData` (0x88) — восемь массивов:
+`CharacterTypeRequirements` (+0x00), `BaseCharacterRequirements` (+0x18),
+`CardTierRequirements` (+0x28), `CardClassRequirements` (+0x38),
+`CharacterTagRequirements` (+0x48), `CharacterTeamRequirements` (+0x58),
+`CharacterAlignmentRequirements` (+0x68), `CharacterGenderRequirements` (+0x78).
+
+Вычисляет их **RVA `0x1C99C38`**, найденная через
+`UEditTeamMenu::UpdateBattleRequirementsStates` (exec `0x214D5DC` → реальная
+`0x1E950D0`, вызов на `0x1E95188`).
+
+ABI нестандартный: функция возвращает `TArray<bool>` **косвенно через `x8`**
+(у `TArray` нетривиальный деструктор, поэтому возврат идёт через скрытый
+указатель независимо от размера). Подтверждается прологом: `mov x20, x8`,
+затем `stp xzr, xzr, [x20]`. Обычным C-прототипом это не выражается, поэтому
+хук — `__attribute__((naked))`-обёртка: сохраняет `x8`, вызывает оригинал,
+затем проходит по возвращённому массиву и выставляет все байты в 1.
+
+`UBattleRequirement` — **не** логика, а UMG-виджет строки требования
+(`UComponentBase : UScreenReaderUserWidget`, размер совпадает с родителем,
+своих полей нет). На него не смотреть.
+
+**Ожидаемый результат — скорее всего отрицательный,** и это нормально: тумблер
+сделан для эмпирической проверки. Требования описывают карты ростера, а ростер
+серверный; `FCompleteChallengeBattleResponse` возвращает `Rewards`
+(`FRewardsReceipt`), а `FMatchSummary` отправляет `PlayerStats`, то есть состав
+сервер видит. Клиентский замок снимается, но нужного персонажа обход не создаёт.
+
+### Серверная античит-телеметрия
+
+`FBattleValidationData` (0x4C) приходит в ответах на завершение боя
+(`CompleteArenaBattleResponse +0xDC`, `CompleteRaidBattleResponse +0x1B0`):
+
+```
++0x04 int32 PlayerCheatCount        +0x1C float PlayerEffectiveDamageReceivedRatio
++0x08 float CheatDetectionScalar    +0x20 float BattleDuration
++0x0C bool  IsValid                 +0x24 float PlayerBasicsPerSecond
++0x0D bool  UsedAutoPlay            +0x28 float PlayerSwapsPerSecond
++0x10 float OpponentThreatRatio     +0x2C float PlayerSpecialsPerSecond
++0x14 float PlayerDPSRatio
+```
+
+Игра штатно измеряет ровно те величины, которые меняет этот твик. Это надо
+учитывать при оценке любых новых функций, а не считать, что клиентские правки
+никем не наблюдаются.
+
 ### Встроенные читы разработчиков
 
 В релизной сборке остался `UCombatCheatManager` (94 функции): `CheatWin`

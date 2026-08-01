@@ -110,6 +110,31 @@ static float IMHookGetCurrentEnergy(void *character) {
     return sOrigGetCurrentEnergy(character);
 }
 
+void *IMOrigRequirementStates;
+
+void IMForceRequirementsMet(void *outArray) {
+    if (!outArray || IMMasterOff() || !IMBypassRequirements()) return;
+    struct IMBoolArray { unsigned char *data; int num; int max; } *array = outArray;
+    if (!array->data || array->num <= 0 || array->num > 4096) return;
+    for (int i = 0; i < array->num; i++) array->data[i] = 1;
+}
+
+__attribute__((naked)) static void IMHookRequirementStates(void) {
+    __asm__ volatile(
+        "stp  x29, x30, [sp, #-32]!                          \n"
+        "mov  x29, sp                                        \n"
+        "str  x8, [sp, #16]                                  \n"
+        "adrp x9, _IMOrigRequirementStates@PAGE              \n"
+        "add  x9, x9, _IMOrigRequirementStates@PAGEOFF       \n"
+        "ldr  x9, [x9]                                       \n"
+        "blr  x9                                             \n"
+        "ldr  x0, [sp, #16]                                  \n"
+        "bl   _IMForceRequirementsMet                        \n"
+        "ldp  x29, x30, [sp], #32                            \n"
+        "ret                                                 \n"
+    );
+}
+
 static bool IMHookIsStunned(void *character, int stunType) {
     if (!IMMasterOff() && IMFreezeAI() && character && !IMIsPlayerCharacter(character)) {
         return true;
@@ -136,6 +161,8 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    MSHookFunction(IMRuntimeAddress(RVA_BattleRequirementStates),
+                   (void *)IMHookRequirementStates, &IMOrigRequirementStates);
     MSHookFunction(IMRuntimeAddress(RVA_IsStunned),
                    (void *)IMHookIsStunned, (void **)&sOrigIsStunned);
     MSHookFunction(IMRuntimeAddress(RVA_GetPowerPercentage),

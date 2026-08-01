@@ -48,6 +48,9 @@ void IMSetInfiniteEnergy(BOOL on);
 BOOL IMFreezeAI(void);
 void IMSetFreezeAI(BOOL on);
 
+BOOL IMBypassRequirements(void);
+void IMSetBypassRequirements(BOOL on);
+
 void IMRequestHeal(void);
 BOOL IMConsumeHealRequest(void);
 

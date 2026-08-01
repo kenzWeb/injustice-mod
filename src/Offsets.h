@@ -17,6 +17,7 @@
 #define RVA_GetCurrentPower         0x1B4E0F0
 #define RVA_GetCurrentEnergy        0x1B4E110
 #define RVA_GetResourceCurrent      0x3745874
+#define RVA_BattleRequirementStates 0x1C99C38
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
 

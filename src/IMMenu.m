@@ -192,6 +192,11 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addSwitchRow:@"HP на экране"
                    target:self action:@selector(onBadge:) accent:NO];
 
+    [builder addSwitchRow:@"Игнорировать требования"
+                   target:self action:@selector(onBypassRequirements:) accent:YES];
+    [builder addCaption:@"снимает клиентский замок входа в испытания"];
+    [builder addSeparator];
+
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
                                           target:self action:@selector(onPresetLoad:)];
     [builder addButtonTrioRow:@"Сохранить в"
@@ -335,6 +340,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onAutoWin                       { IMTriggerAutoWin(); }
 - (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
+- (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
 
 - (void)onPresetSave:(UIButton *)sender {
     IMPresetSave(sender.tag);

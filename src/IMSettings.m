@@ -13,6 +13,7 @@ static atomic_bool sFixedDamageEnabled;
 static atomic_bool sHealRequested;
 static atomic_bool sInfiniteEnergy;
 static atomic_bool sFreezeAI;
+static atomic_bool sBypassRequirements;
 static atomic_llong sAutoWinDeadlineMs;
 
 static atomic_llong sFixedDamage;
@@ -85,6 +86,9 @@ void IMSetInfiniteEnergy(BOOL on) { atomic_store(&sInfiniteEnergy, on); }
 
 BOOL IMFreezeAI(void) { return atomic_load(&sFreezeAI); }
 void IMSetFreezeAI(BOOL on) { atomic_store(&sFreezeAI, on); }
+
+BOOL IMBypassRequirements(void) { return atomic_load(&sBypassRequirements); }
+void IMSetBypassRequirements(BOOL on) { atomic_store(&sBypassRequirements, on); }
 
 IMSettingsSnapshot IMCaptureSettings(void) {
     IMSettingsSnapshot s;
