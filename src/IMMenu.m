@@ -167,6 +167,12 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addCaption:@"выключено — обычный урон × множитель"];
     [builder addSeparator];
 
+    [builder addSwitchRow:@"Бесконечная энергия"
+                   target:self action:@selector(onInfiniteEnergy:) accent:NO];
+    [builder addCaption:@"супер всегда доступен, без ожидания между приёмами"];
+    [builder addSeparator];
+
+    [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
     [builder addButtonRow:@"Восстановить HP" target:self action:@selector(onHeal)];
     [builder addSwitchRow:@"HP на экране"
                    target:self action:@selector(onBadge:) accent:NO];
@@ -278,6 +284,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onFreeze:(UISwitch *)sender     { IMSetFreezeAll(sender.isOn); }
 - (void)onMasterOff:(UISwitch *)sender  { IMSetMasterOff(sender.isOn); }
 - (void)onHeal                          { IMRequestHeal(); }
+- (void)onAutoWin                       { IMTriggerAutoWin(); }
+- (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
 - (void)onBadge:(UISwitch *)sender      { self.badgeEnabled = sender.isOn; }
 
 - (void)onFixedDamage:(UISwitch *)sender {

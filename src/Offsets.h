@@ -9,9 +9,21 @@
 #define RVA_TakeCombatDamage        0x1B4062C
 #define RVA_DamageCharacter         0x1B57088
 
+#define RVA_HasEnoughFunds          0x1B4E914
+#define RVA_HasEnoughPower          0x1B4E874
+#define RVA_HasEnoughEnergy         0x1B4E8C4
+#define RVA_HasEnoughResource       0x1B457A0
+#define RVA_GetPowerPercentage      0x1B4DEA8
+#define RVA_GetCurrentPower         0x1B4E0F0
+#define RVA_GetCurrentEnergy        0x1B4E110
+#define RVA_GetResourceCurrent      0x3745874
+
 #define OFF_CurrentHealth           0x4E4
 #define OFF_MaxHealth               0x4E8
 #define OFF_CharacterTeam           0x118C
+
+#define OFF_ResourceCurrent         0xF8
+#define OFF_ResourceMax             0xFC
 
 #define VT_IsPlayerCharacter        0x9A0
 

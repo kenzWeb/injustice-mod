@@ -79,6 +79,56 @@
 | `0x1B4062C` | `ACombatCharacter::TakeCombatDamage(float, float, ...)` | exec `0x210B560` → `bl` |
 | `0x1B57088` | `ACombatCharacter::DamageCharacter(ACombatCharacter*, float, ...)` | exec `0x210B70C` → `bl` |
 
+### Энергия и стоимость приёмов
+
+Power и Energy **не поля персонажа** — они живут в компонентах
+`UCombatCharacterPower` / `UCombatCharacterEnergy` (оба наследуют
+`UCombatCharacterResource`, размер `0x128`).
+
+Layout компонента подтверждён напрямую, `x0` в exec — это сам ресурс:
+
+| Офсет | Что | Источник |
+|---|---|---|
+| `+0xF8` | текущее значение (float) | лист-функция `0x3745874`: `ldr s0,[x0,#0xF8]; ret` |
+| `+0xFC` | максимум (float) | `execGetMaxResource 0x211ED20`: `ldr s0,[x0,#0xFC]` |
+
+**Важное предупреждение о ложном следе.** В `ResourceComponent::GetCurrent`
+(`0x1B7C83C`) видно `ldr x8,[x0,#0xB00]` / `#0xB08`, а в энергетическом
+аналоге `0x1B7CBD8` — `#0xBB0` / `#0xBB8`. Соблазн принять их за смещения
+компонентов внутри `ACombatCharacter` — ошибка: до этой функции `x0` дважды
+преобразуется вызовами, и это уже не персонаж. Проверка по дампу подтверждает:
+по `+0xB00` у `ACombatCharacter` лежит `ShieldBreakerParticleData`, а не
+указатель. Поэтому твик **не ходит по этим указателям**, а хукает методы
+персонажа, где `x0` гарантированно `ACombatCharacter`.
+
+Гейты приёмов (все `bool f(ACombatCharacter*, ECombatAttackType)`):
+
+| RVA | Функция |
+|---|---|
+| `0x1B4E914` | `HasEnoughFundsForSpecialAbility` |
+| `0x1B4E874` | `HasEnoughPowerForSpecialAbility` |
+| `0x1B4E8C4` | `HasEnoughEnergyForSpecialAbility` |
+| `0x1B457A0` | `HasEnoughResourceForSpecialAbility` |
+| `0x1B4DEA8` | `float GetPowerPercentage(ECombatAttackType)` |
+| `0x1B4E0F0` | `float GetCurrentPower()` |
+| `0x1B4E110` | `float GetCurrentEnergy()` |
+
+Приёмы в этой игре ограничены **стоимостью ресурса, а не таймером**, поэтому
+снятие гейта убирает и «ожидание между приёмами» — отдельного кулдауна нет.
+
+### Встроенные читы разработчиков
+
+В релизной сборке остался `UCombatCheatManager` (94 функции): `CheatWin`
+`0x211F2AC`, `CheatKillAI`, `CheatToggleUnlimitedPlayerSpecials`,
+`CheatSetHealth` и прочие. Все exec-переходники сначала зовут `0x2121D80`,
+затем tail-call в реальную реализацию (`CheatWin` → `0x1B417D8`).
+
+**Не используются намеренно.** Для их вызова нужен живой экземпляр
+`UCheatManager`, который UE создаёт не во всех конфигурациях, а это не
+проверено. Авто-победа сделана через уже работающий хук `SetCurrentHealth`,
+то есть противник умирает штатным путём игры, без зависимости от наличия
+чит-менеджера.
+
 ABI `ShowDamageMessage` проверен по прологу: `x0` = жертва, **`s0` = величина
 урона** (`fmov s8, s0`, затем `fcvtzs w24, s8` для показа), `x1` = `&DamageEvent`,
 `x2` = `DamageCauser`, `w3` = IsCrit, `w4` = IsLethalHit, `w5` = bTrueDamage.

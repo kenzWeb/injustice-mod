@@ -41,6 +41,8 @@ IMHealthDecision IMResolveHealthWrite(BOOL victimIsPlayer,
                 ? maxHealth
                 : (long long)currentHealth - IMScaledLoss(delta, IMDefenseMultiplier());
         }
+    } else if (IMAutoWinActive()) {
+        resolved = 0;
     } else if (delta > 0) {
         if (IMOneHitKill()) {
             resolved = 0;

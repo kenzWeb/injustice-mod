@@ -11,6 +11,8 @@ static atomic_bool sOneHitKill;
 static atomic_bool sFreezeAll;
 static atomic_bool sFixedDamageEnabled;
 static atomic_bool sHealRequested;
+static atomic_bool sInfiniteEnergy;
+static atomic_llong sAutoWinDeadlineMs;
 
 static atomic_llong sFixedDamage;
 static atomic_llong sDamageMultiplierScaled;
@@ -77,8 +79,19 @@ void IMSetDefenseMultiplier(double value) {
     atomic_store(&sDefenseMultiplierScaled, (long long)llround(value * (double)kScale));
 }
 
+BOOL IMInfiniteEnergy(void) { return atomic_load(&sInfiniteEnergy); }
+void IMSetInfiniteEnergy(BOOL on) { atomic_store(&sInfiniteEnergy, on); }
+
 void IMRequestHeal(void) { atomic_store(&sHealRequested, true); }
 BOOL IMConsumeHealRequest(void) { return atomic_exchange(&sHealRequested, false); }
+
+void IMTriggerAutoWin(void) {
+    atomic_store(&sAutoWinDeadlineMs, IMNowMs() + 2500LL);
+}
+
+BOOL IMAutoWinActive(void) {
+    return IMNowMs() < atomic_load(&sAutoWinDeadlineMs);
+}
 
 void IMPublishPlayerHealth(int hp, int max) {
     atomic_store(&sPlayerHP, hp);

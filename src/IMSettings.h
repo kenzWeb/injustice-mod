@@ -38,8 +38,14 @@ void IMSetDamageMultiplier(double value);
 double IMDefenseMultiplier(void);
 void IMSetDefenseMultiplier(double value);
 
+BOOL IMInfiniteEnergy(void);
+void IMSetInfiniteEnergy(BOOL on);
+
 void IMRequestHeal(void);
 BOOL IMConsumeHealRequest(void);
+
+void IMTriggerAutoWin(void);
+BOOL IMAutoWinActive(void);
 
 void IMPublishPlayerHealth(int hp, int max);
 void IMPublishEnemyHealth(int hp, int max);
