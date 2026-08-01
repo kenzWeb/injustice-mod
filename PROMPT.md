@@ -41,13 +41,34 @@ SDK скачивать не надо: на macOS Theos берёт iPhoneOS SDK �
 
 ## СБОРКА
 
+Основной способ — скрипт в репозитории:
+
 ```bash
 cd injustice-mod
+./build.sh          # обычная сборка
+./build.sh -c       # чистая (сносит .theos)
+./build.sh -p -c    # git pull, затем чистая сборка
+```
+
+Он нужен не для красоты: **Theos отказывается собирать из пути с пробелом**
+(`common.mk:45: Your project is located at ... which contains spaces`), а
+репозиторий у владельца лежит в `.../injustice 2/`. Скрипт зеркалит дерево во
+временный каталог, собирает там и копирует `.deb` обратно в `packages/`.
+
+Если путь заведомо без пробелов, можно и напрямую:
+
+```bash
 export THEOS=~/theos-roothide
 make package FINALPACKAGE=1
 ```
 
 Готовый пакет появится в `./packages/*.deb`.
+
+**Про имя файла.** В форке roothide `vendor/mod/roothide/package/deb.mk`
+безусловно выставляет `THEOS_PACKAGE_ARCH := iphoneos-arm64e`, перебивая поле
+`Architecture:` из `control` и не завися от `ARCHS`. Поэтому пакет **всегда**
+получает суффикс `_iphoneos-arm64e.deb`. Ориентируйся на поле `Version`, а не
+на арх-суффикс.
 
 ## КРИТИЧНО
 
@@ -71,13 +92,21 @@ make package FINALPACKAGE=1
 | `Unknown package scheme 'roothide'` | взят стоковый Theos — нужен форк roothide |
 | `substrate.h: No such file` | Theos склонирован без `--recursive`, либо `$THEOS` не выставлен |
 | `ldid: command not found` | `brew install ldid` |
-| ошибки на `arm64e` | убрать `arm64e` из `ARCHS` в Makefile — у игры нет arm64e-слайса, слайс arm64 достаточен |
+| `Your project is located at ... which contains spaces` | собирать через `./build.sh`, он зеркалит дерево во временный каталог |
+| `Undefined symbols`, `NOTE: found '_IMxxx' ... missing 'extern "C"'` | новый заголовок включён из `Tweak.xm` без обёртки `extern "C"` — см. `HANDOFF.md` |
 | `No rule to make target` | запуск не из папки с Makefile |
+| `ld: warning: -multiply_defined is obsolete` | ворнинг линкера Theos, к коду отношения не имеет |
+| `Could not find or use auto-linked framework 'UIUtilities'` | авто-линковка модуля UIKit в SDK 26, на пакет не влияет |
 | ворнинги на `atomic_*` / `MSHookFunction` | игнорировать, это не ошибки |
+
+Обе архитектуры (`arm64`, `arm64e`) собираются без ошибок, убирать `arm64e` из
+`ARCHS` не нужно. Игра arm64-only, поэтому в её процессе грузится arm64-слайс,
+а arm64e-слайс в fat-dylib просто не используется.
 
 ## ЧТО ВЕРНУТЬ
 
-1. Полный вывод `make package` (или хотя бы все ошибки/ворнинги).
+1. Полный вывод сборки (или хотя бы все ошибки/ворнинги).
 2. Абсолютный путь к собранному `.deb` и его размер.
-3. Вывод `dpkg-deb -I <deb>` и `dpkg-deb -c <deb>`.
+3. Вывод `dpkg-deb -I <deb>` и `dpkg-deb -c <deb>` — сверять **`Version`**,
+   имя файла всегда с суффиксом `arm64e`.
 4. Список изменений, если что-то пришлось править.

@@ -203,6 +203,44 @@ src/IMMenu          сборка и поведение меню
 про `IMSettings`, `IMDamage` и `IMRuntime`, но `IMDamage` не знает ни про UIKit,
 ни про хуки. Благодаря этому решение об уроне принимается ровно в одном месте.
 
+### Обязательное: `extern "C"` в заголовках для `Tweak.xm`
+
+Theos компилирует `.xm` как **Objective-C++**, а весь `src/` — обычный
+Objective-C. Голое объявление C-функции в заголовке, включённом из `Tweak.xm`,
+попадает в C++-namespace и манглится (`IMHooksInstall()`), тогда как
+определение в `.m` даёт C-символ (`_IMHooksInstall`). Линковка падает с
+`Undefined symbols ... NOTE: found '_IMHooksInstall' ... declaration possibly
+missing 'extern "C"'`.
+
+Поэтому `IMHooks.h`, `IMRuntime.h`, `IMSettings.h`, `IMMenu.h` оборачивают
+объявления функций в:
+
+```c
+#ifdef __cplusplus
+extern "C" {
+#endif
+...
+#ifdef __cplusplus
+}
+#endif
+```
+
+**Любой новый заголовок, включаемый из `Tweak.xm`, обязан делать то же самое.**
+`@interface` ObjC-классов оставляют снаружи блока — им это не нужно.
+`Offsets.h` не требует обёртки (одни макросы). Остальные заголовки
+(`IMDamage.h`, `IMPresets.h`, `IMTheme.h`, `IMRowBuilder.h`,
+`IMOverlayWindow.h`) включаются только из `.m`, смешения линковок нет.
+
+До версии 1.1.0 проблемы не было, потому что весь код лежал в одном `Tweak.xm`.
+
+### ARC и out-параметры
+
+Не возвращать паттерн «out-параметр — указатель на ObjC-объект» без явного
+`__strong`. Под ARC указательный out-параметр по умолчанию `__autoreleasing`,
+и передача `&_ivar` (адрес `__strong` ivar) запрещена: `passing address of
+non-local object to __autoreleasing parameter for write-back`. Если такой
+параметр нужен, тип обязан быть `UITextField * __strong *`.
+
 ## Решения в коде и почему
 
 1. **Один хук вместо патча инструкций.** Патчер офсетов (у владельца есть такой

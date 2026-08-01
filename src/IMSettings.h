@@ -12,8 +12,6 @@ typedef struct {
 #define IM_MULTIPLIER_MAX  999999999.0
 #define IM_FIXED_DAMAGE_MAX 999999999LL
 
-// Tweak.xm is compiled as Objective-C++ while these are defined in plain
-// Objective-C .m files, so the declarations need C linkage.
 #ifdef __cplusplus
 extern "C" {
 #endif

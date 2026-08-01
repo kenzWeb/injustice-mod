@@ -6,6 +6,16 @@ overlay menu with a live HP readout.
 
 ## Build
 
+Use `./build.sh` — `-c` for a clean build, `-p` to `git pull` first. Theos
+refuses to build from a path containing spaces and this repo usually lives
+under `.../injustice 2/`, so the script mirrors the tree into a scratch
+directory, builds there and copies the `.deb` back into `packages/`.
+
+The packaged file is always named `..._iphoneos-arm64e.deb`: the roothide fork's
+`vendor/mod/roothide/package/deb.mk` forces `THEOS_PACKAGE_ARCH` to
+`iphoneos-arm64e` regardless of `ARCHS` or the `Architecture:` field. Identify a
+build by its `Version`, not by the architecture suffix.
+
 The Makefile ships set to `THEOS_PACKAGE_SCHEME := roothide`.
 
 ### RootHide
