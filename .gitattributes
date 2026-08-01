@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Must stay LF: Makefile relies on tabs, dpkg rejects CRLF in control
+Makefile   text eol=lf
+control    text eol=lf
+*.plist    text eol=lf
+*.xm       text eol=lf
+*.h        text eol=lf
+*.sh       text eol=lf
