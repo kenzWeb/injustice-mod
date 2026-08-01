@@ -122,6 +122,15 @@ void IMForceRequirementsMet(void *outArray) {
 typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
+typedef bool (*IMTeamMeetsFn)(void *requirementData, void *team, void *context, long flags);
+static IMTeamMeetsFn sOrigTeamMeetsRequirements;
+
+static bool IMHookTeamMeetsRequirements(void *requirementData, void *team,
+                                        void *context, long flags) {
+    if (!IMMasterOff() && IMBypassRequirements()) return true;
+    return sOrigTeamMeetsRequirements(requirementData, team, context, flags);
+}
+
 typedef void (*IMRequirementsResultFn)(void *context, void *resultFlag);
 static IMRequirementsResultFn sOrigRequirementsResult;
 
@@ -181,6 +190,9 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    MSHookFunction(IMRuntimeAddress(RVA_TeamMeetsRequirements),
+                   (void *)IMHookTeamMeetsRequirements,
+                   (void **)&sOrigTeamMeetsRequirements);
     MSHookFunction(IMRuntimeAddress(RVA_BattleRequirementStates),
                    (void *)IMHookRequirementStates, &IMOrigRequirementStates);
     MSHookFunction(IMRuntimeAddress(RVA_OnFightButtonClicked),

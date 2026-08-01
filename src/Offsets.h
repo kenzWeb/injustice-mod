@@ -18,6 +18,7 @@
 #define RVA_GetCurrentEnergy        0x1B4E110
 #define RVA_GetResourceCurrent      0x3745874
 #define RVA_BattleRequirementStates 0x1C99C38
+#define RVA_TeamMeetsRequirements   0x1C998FC
 #define RVA_OnFightButtonClicked    0x1F4D690
 #define RVA_RequirementsResult      0x1F625DC
 #define OFF_RequirementsUnmet       0x750
