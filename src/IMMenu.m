@@ -4,6 +4,7 @@
 #import "IMSettings.h"
 #import "IMPresets.h"
 #import "IMTheme.h"
+#import "IMHooks.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -203,7 +204,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     UIView *traceRow = [builder addCustomRowOfHeight:34];
     self.trace = [[UILabel alloc] initWithFrame:
         CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
-    self.trace.numberOfLines = 1;
+    self.trace.numberOfLines = 2;
     self.trace.font = [UIFont monospacedDigitSystemFontOfSize:10
                                                        weight:UIFontWeightRegular];
     self.trace.textColor = IMColorDim();
@@ -547,10 +548,12 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     }
 
     self.trace.text = [NSString stringWithFormat:
-        @"map%d sum%d press%d   pre%d fight%d kill%d",
+        @"map%d sum%d press%d pre%d fight%d kill%d   BTN%d a1=%llx a2=%llx m=%d",
         IMTraceValue(IMTraceChapterInit), IMTraceValue(IMTraceSummaryShown),
         IMTraceValue(IMTraceSummaryPressed), IMTraceValue(IMTracePreFightView),
-        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill)];
+        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill),
+        IMSummaryPressCount(), IMSummaryArg1(), IMSummaryArg2(),
+        IMSummaryMenuMatches() ? 1 : 0];
 
     self.readout.text = health.stale
         ? @"YOU    —\nENEMY  —"

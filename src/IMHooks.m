@@ -424,6 +424,20 @@ static void *IMHookLevelActor(void *menu) {
     return sOrigLevelActor(menu);
 }
 
+typedef void (*IMSummaryPressFn)(void *menu, unsigned long long a1, unsigned long long a2);
+static IMSummaryPressFn sOrigSummaryPress;
+static unsigned long long sCapturedA1, sCapturedA2;
+static void * volatile sCapturedMenu;
+static int sCapturedPressCount;
+
+static void IMHookSummaryPress(void *menu, unsigned long long a1, unsigned long long a2) {
+    sCapturedMenu = menu;
+    sCapturedA1 = a1;
+    sCapturedA2 = a2;
+    sCapturedPressCount++;
+    sOrigSummaryPress(menu, a1, a2);
+}
+
 static IMCurrentBattleIdFn sOrigCurrentBattleId;
 
 static IMFName IMHookCurrentBattleId(void *menu) {
@@ -453,11 +467,7 @@ static void IMNavigateStep(int tick) {
             return;
         }
 
-        if (campaign && sStartCampaignBattle && sSummaryBattleValid &&
-            now - sSummaryWindowSeenMs < 8000) {
-            IMTraceBump(IMTraceSummaryPressed);
-            sStartCampaignBattle(campaign, sSummaryBattleName);
-        }
+        (void)campaign;
     }
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
@@ -554,6 +564,8 @@ BOOL IMHooksInstall(void) {
 
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
+    MSHookFunction(IMRuntimeAddress(RVA_CampaignStartBattle),
+                   (void *)IMHookSummaryPress, (void **)&sOrigSummaryPress);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignLadderView),
                    (void *)IMHookLadderView, (void **)&sOrigLadderView);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignLevelActor),
@@ -649,3 +661,8 @@ BOOL IMHooksInstall(void) {
 }
 
 BOOL IMHooksInstalled(void) { return sInstalled; }
+
+int IMSummaryPressCount(void) { return sCapturedPressCount; }
+unsigned long long IMSummaryArg1(void) { return sCapturedA1; }
+unsigned long long IMSummaryArg2(void) { return sCapturedA2; }
+BOOL IMSummaryMenuMatches(void) { return sCapturedMenu && sCapturedMenu == sCampaignMenu; }

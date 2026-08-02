@@ -8,6 +8,11 @@ extern "C" {
 BOOL IMHooksInstall(void);
 BOOL IMHooksInstalled(void);
 
+int IMSummaryPressCount(void);
+unsigned long long IMSummaryArg1(void);
+unsigned long long IMSummaryArg2(void);
+BOOL IMSummaryMenuMatches(void);
+
 #ifdef __cplusplus
 }
 #endif
