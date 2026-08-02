@@ -385,13 +385,13 @@ static void IMHookPreFightOpponentView(void *menu) {
     sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
 
-    if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
+    if (IMMasterOff() || !IMAutoPressFight() || !sPreFightStartFight) return;
     if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || !IMAutoPressFight()) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);
@@ -456,27 +456,6 @@ static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
 
 
-static void IMNavigateStep(int tick) {
-    if (tick > 8 || IMMasterOff() || !IMAutoCampaign()) return;
-
-    if (!IMInCombat() && !IMFightStartedRecently()) {
-        long long now = IMNowMillis();
-        void *prefight = sPreFightMenu;
-        void *campaign = sCampaignMenu;
-
-        if (prefight && sPreFightStartFight && now - sPreFightSeenMs < 8000) {
-            IMTraceBump(IMTraceFightStarted);
-            sPreFightStartFight(prefight);
-            return;
-        }
-
-        (void)campaign;
-    }
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ IMNavigateStep(tick + 1); });
-}
-
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
@@ -488,8 +467,6 @@ static void IMHookResultsTransitionIn(void *popup) {
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
         sResultsOnContinue(target);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ IMNavigateStep(1); });
     });
 }
 

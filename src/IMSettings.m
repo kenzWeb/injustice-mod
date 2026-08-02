@@ -15,6 +15,7 @@ static atomic_bool sInfiniteEnergy;
 static atomic_bool sFreezeAI;
 static atomic_bool sBypassRequirements;
 static atomic_bool sAutoCampaign;
+static atomic_bool sAutoPressFight;
 static atomic_llong sCombatStartMs;
 static atomic_llong sAutoCampaignDelayMs;
 static atomic_llong sLastAutoStartMs;
@@ -101,6 +102,9 @@ BOOL IMBypassRequirements(void) { return atomic_load(&sBypassRequirements); }
 void IMSetBypassRequirements(BOOL on) { atomic_store(&sBypassRequirements, on); }
 
 BOOL IMAutoCampaign(void) { return atomic_load(&sAutoCampaign); }
+
+BOOL IMAutoPressFight(void) { return atomic_load(&sAutoPressFight); }
+void IMSetAutoPressFight(BOOL on) { atomic_store(&sAutoPressFight, on); }
 
 void IMSetAutoCampaign(BOOL on) {
     atomic_store(&sAutoCampaign, on);
