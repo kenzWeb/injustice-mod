@@ -17,6 +17,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) UIScrollView      *scroll;
 @property (nonatomic, strong) UILabel           *readout;
 @property (nonatomic, strong) UILabel           *badge;
+@property (nonatomic, strong) UILabel           *trace;
 @property (nonatomic, strong) UISwitch          *godSwitch;
 @property (nonatomic, strong) UISwitch          *oneHitSwitch;
 @property (nonatomic, strong) UISwitch          *freezeSwitch;
@@ -199,6 +200,15 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
                                    maxValue:15.0
                                    decimals:YES];
     [builder addCaption:@"бой сам завершается победой, экран наград закрывается"];
+    UIView *traceRow = [builder addCustomRowOfHeight:34];
+    self.trace = [[UILabel alloc] initWithFrame:
+        CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
+    self.trace.numberOfLines = 2;
+    self.trace.font = [UIFont monospacedDigitSystemFontOfSize:10
+                                                       weight:UIFontWeightRegular];
+    self.trace.textColor = IMColorDim();
+    self.trace.text = @"map0 sum0 press0 pre0 fight0 kill0";
+    [traceRow addSubview:self.trace];
     [builder addSeparator];
 
     [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
@@ -535,6 +545,13 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
         self.fixedRow.slider.value =
             (float)MIN((double)IMFixedDamage(), (double)health.enemyMax);
     }
+
+    self.trace.text = [NSString stringWithFormat:
+        @"map%d sum%d press%d
+pre%d fight%d kill%d",
+        IMTraceValue(IMTraceChapterInit), IMTraceValue(IMTraceSummaryShown),
+        IMTraceValue(IMTraceSummaryPressed), IMTraceValue(IMTracePreFightView),
+        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill)];
 
     self.readout.text = health.stale
         ? @"YOU    —\nENEMY  —"

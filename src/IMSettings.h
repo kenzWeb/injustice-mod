@@ -59,6 +59,20 @@ BOOL IMAutoCampaignMayPressFight(void);
 BOOL IMAutoCampaignMayPressSummary(void);
 BOOL IMAutoCampaignMayAdvanceChapter(void);
 
+typedef enum {
+    IMTraceChapterInit = 0,
+    IMTraceSummaryShown,
+    IMTraceSummaryPressed,
+    IMTracePreFightView,
+    IMTraceFightStarted,
+    IMTraceKill,
+    IMTraceCount
+} IMTraceEvent;
+
+void IMTraceBump(IMTraceEvent event);
+int  IMTraceValue(IMTraceEvent event);
+void IMTraceReset(void);
+
 double IMAutoCampaignDelay(void);
 void IMSetAutoCampaignDelay(double seconds);
 

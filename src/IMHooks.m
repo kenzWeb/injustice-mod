@@ -315,6 +315,7 @@ static float IMHookGetHealthPercentage(void *character) {
         maximum > 0 && current > 0 &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;
+        IMTraceBump(IMTraceKill);
         sKillCharacter(causer, character, causer);
         sInAutoFinish = NO;
     }
@@ -345,6 +346,7 @@ static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) 
     if (!menu) return;
     sCampaignMenu = menu;
     sCampaignChapter = chapterIndex;
+    IMTraceBump(IMTraceChapterInit);
 
     if (IMMasterOff() || !sGoToFightInCurrentTab) return;
     if (!IMAutoCampaignMayStartBattle()) return;
@@ -369,6 +371,7 @@ static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) 
 
 static void IMHookSummaryWindowShown(void *window) {
     sOrigSummaryShown(window);
+    IMTraceBump(IMTraceSummaryShown);
 
     void *menu = sCampaignMenu;
     if (IMMasterOff() || !menu || !sStartCampaignBattle || !sCurrentBattleId) return;
@@ -377,12 +380,14 @@ static void IMHookSummaryWindowShown(void *window) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
+        IMTraceBump(IMTraceSummaryPressed);
         sStartCampaignBattle(menu, sCurrentBattleId(menu));
     });
 }
 
 static void IMHookPreFightOpponentView(void *menu) {
     sOrigOpponentView(menu);
+    IMTraceBump(IMTracePreFightView);
 
     if (!menu || IMMasterOff() || !sPreFightStartFight) return;
     if (!IMAutoCampaignMayPressFight()) return;
@@ -390,6 +395,7 @@ static void IMHookPreFightOpponentView(void *menu) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
+        IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);
     });
 }

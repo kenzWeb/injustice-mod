@@ -166,6 +166,22 @@ BOOL IMAutoCampaignMayStartBattle(void) {
     return YES;
 }
 
+static atomic_int sTrace[IMTraceCount];
+
+void IMTraceBump(IMTraceEvent event) {
+    if (event < 0 || event >= IMTraceCount) return;
+    atomic_fetch_add(&sTrace[event], 1);
+}
+
+int IMTraceValue(IMTraceEvent event) {
+    if (event < 0 || event >= IMTraceCount) return 0;
+    return atomic_load(&sTrace[event]);
+}
+
+void IMTraceReset(void) {
+    for (int i = 0; i < IMTraceCount; i++) atomic_store(&sTrace[i], 0);
+}
+
 static void IMNoteCombatTick(void) {
     long long now = IMNowMs();
     long long last = atomic_load(&sLastSeenMs);
