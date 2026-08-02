@@ -93,78 +93,6 @@ static NSInteger IMHookNEVPNConnectionStatus(id self, SEL _cmd) {
     return sOrigNEVPNConnectionStatus ? sOrigNEVPNConnectionStatus(self, _cmd) : 0;
 }
 
-static void (*sOrigWkDidFinishNav)(id self, SEL _cmd, WKWebView *webView, WKNavigation *nav);
-static void IMHookWkDidFinishNav(id self, SEL _cmd, WKWebView *webView, WKNavigation *nav) {
-    if (sOrigWkDidFinishNav) {
-        sOrigWkDidFinishNav(self, _cmd, webView, nav);
-    }
-    if (!IMMasterOff() && IMBypassVPNCheck() && [webView isKindOfClass:WKWebView.class]) {
-        NSString *js =
-            @"(function() {"
-            @"  function cleanVpnModal() {"
-            @"    var textPatterns = ['vpn не допускается', 'устройства, использующие vpn', 'vpn is not allowed', 'devices using vpn'];"
-            @"    var nodes = document.querySelectorAll('div, section, article, p, h1, h2, h3, span');"
-            @"    for (var i = 0; i < nodes.length; i++) {"
-            @"      var t = (nodes[i].innerText || nodes[i].textContent || '').toLowerCase();"
-            @"      for (var p = 0; p < textPatterns.length; p++) {"
-            @"        if (t.indexOf(textPatterns[p]) !== -1) {"
-            @"          var el = nodes[i];"
-            @"          var target = el;"
-            @"          while (el && el.parentElement && el.parentElement !== document.body) {"
-            @"            if (el.classList && (el.classList.contains('modal') || el.classList.contains('overlay') || el.classList.contains('container') || el.classList.contains('error') || el.classList.contains('content'))) {"
-            @"              target = el;"
-            @"              break;"
-            @"            }"
-            @"            el = el.parentElement;"
-            @"          }"
-            @"          if (target && target.style) target.style.display = 'none';"
-            @"          break;"
-            @"        }"
-            @"      }"
-            @"    }"
-            @"    if (document.body) {"
-            @"      document.body.style.overflow = 'auto';"
-            @"      document.body.style.pointerEvents = 'auto';"
-            @"    }"
-            @"  }"
-            @"  cleanVpnModal();"
-            @"  if (!window._imVpnCleanerInterval) {"
-            @"    window._imVpnCleanerInterval = setInterval(cleanVpnModal, 300);"
-            @"  }"
-            @"})();";
-        [webView evaluateJavaScript:js completionHandler:nil];
-    }
-}
-
-static void (*sOrigDisplayAlertWithParams)(id self, SEL _cmd, NSDictionary *params, id completion);
-static void IMHookDisplayAlertWithParams(id self, SEL _cmd, NSDictionary *params, id completion) {
-    if (!IMMasterOff() && IMBypassVPNCheck() && [params isKindOfClass:NSDictionary.class]) {
-        NSString *title = [params[@"title"] description].lowercaseString;
-        NSString *msg   = [params[@"message"] description].lowercaseString;
-        if ([title containsString:@"vpn"] || [msg containsString:@"vpn"] ||
-            [title containsString:@"заблокиров"] || [msg containsString:@"заблокиров"]) {
-            if (completion && [completion respondsToSelector:@selector(invoke)]) {
-                void (^block)(void) = completion;
-                block();
-            }
-            return;
-        }
-    }
-    if (sOrigDisplayAlertWithParams) {
-        sOrigDisplayAlertWithParams(self, _cmd, params, completion);
-    }
-}
-
-static void (*sOrigShowGenericErrorAlert)(id self, SEL _cmd, id arg1);
-static void IMHookShowGenericErrorAlert(id self, SEL _cmd, id arg1) {
-    if (!IMMasterOff() && IMBypassVPNCheck()) {
-        return;
-    }
-    if (sOrigShowGenericErrorAlert) {
-        sOrigShowGenericErrorAlert(self, _cmd, arg1);
-    }
-}
-
 static void IMHookSetCurrentHealth(void *character, int newHealth) {
     if (!character) {
         sOrigSetCurrentHealth(character, newHealth);
@@ -352,30 +280,6 @@ BOOL IMHooksInstall(void) {
     Class neClass = NSClassFromString(@"NEVPNConnection");
     if (neClass) {
         MSHookMessageEx(neClass, @selector(status), (IMP)IMHookNEVPNConnectionStatus, (IMP *)&sOrigNEVPNConnectionStatus);
-    }
-
-    Class tjWkBridge = NSClassFromString(@"TJWKWebViewJavascriptBridge");
-    if (tjWkBridge) {
-        MSHookMessageEx(tjWkBridge, @selector(webView:didFinishNavigation:),
-                        (IMP)IMHookWkDidFinishNav, (IMP *)&sOrigWkDidFinishNav);
-    }
-
-    Class tjUIWebPage = NSClassFromString(@"TJCUIWebPageView");
-    if (tjUIWebPage) {
-        MSHookMessageEx(tjUIWebPage, @selector(jsBridge:displayAlertWithParameters:completion:),
-                        (IMP)IMHookDisplayAlertWithParams, (IMP *)&sOrigDisplayAlertWithParams);
-    }
-
-    Class tjWebVC = NSClassFromString(@"TJCWebViewController");
-    if (tjWebVC) {
-        MSHookMessageEx(tjWebVC, @selector(jsBridge:displayAlertWithParameters:completion:),
-                        (IMP)IMHookDisplayAlertWithParams, (IMP *)&sOrigDisplayAlertWithParams);
-    }
-
-    Class tjUtil = NSClassFromString(@"TJCUtil");
-    if (tjUtil) {
-        MSHookMessageEx(tjUtil, @selector(showGenericErrorAlert:),
-                        (IMP)IMHookShowGenericErrorAlert, (IMP *)&sOrigShowGenericErrorAlert);
     }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);
