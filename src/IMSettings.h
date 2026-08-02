@@ -63,6 +63,7 @@ BOOL IMAutoCampaignMayPressSummary(void);
 BOOL IMAutoCampaignMayAdvanceChapter(void);
 BOOL IMInCombat(void);
 void IMNoteFightStarted(void);
+void IMNoteFightEnded(void);
 BOOL IMFightStartedRecently(void);
 
 typedef enum {

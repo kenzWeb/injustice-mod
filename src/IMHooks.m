@@ -426,6 +426,7 @@ static IMResultsPopupFn sResultsOnContinue;
 
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
+    IMNoteFightEnded();
     if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
 
     __block void *target = popup;

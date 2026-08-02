@@ -173,7 +173,13 @@ BOOL IMAutoCampaignMayStartBattle(void) {
 static atomic_llong sFightStartedMs;
 
 void IMNoteFightStarted(void) {
-    atomic_store(&sFightStartedMs, IMNowMs());
+    long long now = IMNowMs();
+    atomic_store(&sFightStartedMs, now);
+    atomic_store(&sCombatStartMs, now);
+}
+
+void IMNoteFightEnded(void) {
+    atomic_store(&sCombatStartMs, 0);
 }
 
 BOOL IMFightStartedRecently(void) {
@@ -202,12 +208,6 @@ int IMTraceValue(IMTraceEvent event) {
 
 void IMTraceReset(void) {
     for (int i = 0; i < IMTraceCount; i++) atomic_store(&sTrace[i], 0);
-}
-
-static void IMNoteCombatTick(void) {
-    long long now = IMNowMs();
-    long long last = atomic_load(&sLastSeenMs);
-    if (last <= 0 || now - last > kStaleMs) atomic_store(&sCombatStartMs, now);
 }
 
 BOOL IMBypassVPNCheck(void) { return atomic_load(&sBypassVPNCheck); }
@@ -253,14 +253,12 @@ BOOL IMAutoWinActive(void) {
 }
 
 void IMPublishPlayerHealth(int hp, int max) {
-    IMNoteCombatTick();
     atomic_store(&sPlayerHP, hp);
     atomic_store(&sPlayerMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());
 }
 
 void IMPublishEnemyHealth(int hp, int max) {
-    IMNoteCombatTick();
     atomic_store(&sEnemyHP, hp);
     atomic_store(&sEnemyMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());
