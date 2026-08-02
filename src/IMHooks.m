@@ -325,9 +325,14 @@ static float IMHookGetHealthPercentage(void *character) {
 typedef struct { uint32_t part[3]; } IMFName;
 typedef void (*IMChapterInitFn)(void *menu, int32_t chapterIndex, IMFName battle);
 typedef void (*IMStartCampaignBattleFn)(void *menu, IMFName battleID);
+typedef IMFName (*IMCurrentBattleIdFn)(void *menu);
+typedef void (*IMPreFightFn)(void *menu);
 
 static IMChapterInitFn         sOrigChapterInit;
 static IMStartCampaignBattleFn sStartCampaignBattle;
+static IMCurrentBattleIdFn     sCurrentBattleId;
+static IMPreFightFn            sOrigOpponentView;
+static IMPreFightFn            sPreFightStartFight;
 
 static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) {
     sOrigChapterInit(menu, chapterIndex, battle);
@@ -338,7 +343,21 @@ static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.6 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
-        sStartCampaignBattle(menu, battle);
+        IMFName target = sCurrentBattleId ? sCurrentBattleId(menu) : battle;
+        sStartCampaignBattle(menu, target);
+    });
+}
+
+static void IMHookPreFightOpponentView(void *menu) {
+    sOrigOpponentView(menu);
+
+    if (!menu || IMMasterOff() || !sPreFightStartFight) return;
+    if (!IMAutoCampaignMayPressFight()) return;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        sPreFightStartFight(menu);
     });
 }
 
@@ -433,8 +452,14 @@ BOOL IMHooksInstall(void) {
 
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
+    sCurrentBattleId =
+        (IMCurrentBattleIdFn)IMRuntimeAddress(RVA_CampaignCurrentBattleId);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),
                    (void *)IMHookChapterInit, (void **)&sOrigChapterInit);
+
+    sPreFightStartFight = (IMPreFightFn)IMRuntimeAddress(RVA_PreFightStartFight);
+    MSHookFunction(IMRuntimeAddress(RVA_PreFightOpponentView),
+                   (void *)IMHookPreFightOpponentView, (void **)&sOrigOpponentView);
 
     sResultsOnContinue = (IMResultsPopupFn)IMRuntimeAddress(RVA_ResultsOnContinue);
     MSHookFunction(IMRuntimeAddress(RVA_ResultsTransitionIn),
