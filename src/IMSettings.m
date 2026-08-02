@@ -17,6 +17,7 @@ static atomic_bool sBypassRequirements;
 static atomic_bool sAutoCampaign;
 static atomic_llong sCombatStartMs;
 static atomic_llong sAutoCampaignDelayMs;
+static atomic_llong sLastAutoStartMs;
 static atomic_bool sBypassVPNCheck;
 static atomic_llong sAutoWinDeadlineMs;
 
@@ -100,7 +101,10 @@ BOOL IMAutoCampaign(void) { return atomic_load(&sAutoCampaign); }
 
 void IMSetAutoCampaign(BOOL on) {
     atomic_store(&sAutoCampaign, on);
-    if (!on) atomic_store(&sCombatStartMs, 0);
+    if (!on) {
+        atomic_store(&sCombatStartMs, 0);
+        atomic_store(&sLastAutoStartMs, 0);
+    }
 }
 
 double IMAutoCampaignDelay(void) {
@@ -118,6 +122,15 @@ BOOL IMAutoCampaignShouldFinish(void) {
     long long started = atomic_load(&sCombatStartMs);
     if (started <= 0) return NO;
     return (IMNowMs() - started) >= atomic_load(&sAutoCampaignDelayMs);
+}
+
+BOOL IMAutoCampaignMayStartBattle(void) {
+    if (!atomic_load(&sAutoCampaign)) return NO;
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastAutoStartMs);
+    if (last > 0 && now - last < 4000LL) return NO;
+    atomic_store(&sLastAutoStartMs, now);
+    return YES;
 }
 
 static void IMNoteCombatTick(void) {

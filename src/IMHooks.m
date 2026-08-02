@@ -4,6 +4,7 @@
 #import "IMDamage.h"
 #import "Offsets.h"
 #import <substrate.h>
+#import <stdint.h>
 #import <ifaddrs.h>
 #import <net/if.h>
 #import <CFNetwork/CFNetwork.h>
@@ -285,6 +286,26 @@ void IMForceRequirementsMet(void *outArray) {
 typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
+typedef struct { uint32_t part[3]; } IMFName;
+typedef void (*IMChapterInitFn)(void *menu, int32_t chapterIndex, IMFName battle);
+typedef void (*IMStartCampaignBattleFn)(void *menu, IMFName battleID);
+
+static IMChapterInitFn         sOrigChapterInit;
+static IMStartCampaignBattleFn sStartCampaignBattle;
+
+static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) {
+    sOrigChapterInit(menu, chapterIndex, battle);
+
+    if (!menu || IMMasterOff() || !sStartCampaignBattle) return;
+    if (!IMAutoCampaignMayStartBattle()) return;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        sStartCampaignBattle(menu, battle);
+    });
+}
+
 typedef void (*IMResultsPopupFn)(void *popup);
 static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
@@ -369,6 +390,11 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    sStartCampaignBattle =
+        (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
+    MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),
+                   (void *)IMHookChapterInit, (void **)&sOrigChapterInit);
+
     sResultsOnContinue = (IMResultsPopupFn)IMRuntimeAddress(RVA_ResultsOnContinue);
     MSHookFunction(IMRuntimeAddress(RVA_ResultsTransitionIn),
                    (void *)IMHookResultsTransitionIn,

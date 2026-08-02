@@ -54,6 +54,7 @@ void IMSetBypassRequirements(BOOL on);
 BOOL IMAutoCampaign(void);
 void IMSetAutoCampaign(BOOL on);
 BOOL IMAutoCampaignShouldFinish(void);
+BOOL IMAutoCampaignMayStartBattle(void);
 
 double IMAutoCampaignDelay(void);
 void IMSetAutoCampaignDelay(double seconds);

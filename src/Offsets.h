@@ -19,6 +19,8 @@
 #define RVA_GetResourceCurrent      0x3745874
 #define RVA_BattleRequirementStates 0x1C99C38
 #define RVA_TeamMeetsRequirements   0x1C998FC
+#define RVA_CampaignChapterInit     0x1D46D88
+#define RVA_CampaignStartBattle     0x1D479B0
 #define RVA_ResultsTransitionIn     0x1F3957C
 #define RVA_ResultsOnContinue       0x1F39914
 #define RVA_OnFightButtonClicked    0x1F4D690
