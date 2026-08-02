@@ -4,7 +4,6 @@
 #import "IMSettings.h"
 #import "IMPresets.h"
 #import "IMTheme.h"
-#import "IMHooks.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -26,7 +25,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) UISwitch          *freezeAISwitch;
 @property (nonatomic, strong) UISwitch          *fixedSwitch;
 @property (nonatomic, strong) UISwitch          *vpnSwitch;
-@property (nonatomic, strong) UISwitch          *pressFightSwitch;
 @property (nonatomic, strong) NSArray<UIButton *> *loadButtons;
 @property (nonatomic, strong) IMValueRow        *damageRow;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
@@ -202,14 +200,11 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
                                    maxValue:15.0
                                    decimals:YES];
     [builder addCaption:@"бой сам завершается победой, экран наград закрывается"];
-    [builder addSeparator];
-    self.pressFightSwitch = [builder addSwitchRow:@"Авто-нажатие В БОЙ"
-                                           target:self action:@selector(onAutoPressFight:) accent:YES];
-    [builder addCaption:@"ломает бои — включать только для проверки"];
+
     UIView *traceRow = [builder addCustomRowOfHeight:34];
     self.trace = [[UILabel alloc] initWithFrame:
         CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
-    self.trace.numberOfLines = 2;
+    self.trace.numberOfLines = 1;
     self.trace.font = [UIFont monospacedDigitSystemFontOfSize:10
                                                        weight:UIFontWeightRegular];
     self.trace.textColor = IMColorDim();
@@ -379,7 +374,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
 - (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
 - (void)onAutoCampaign:(UISwitch *)sender { IMSetAutoCampaign(sender.isOn); }
-- (void)onAutoPressFight:(UISwitch *)sender { IMSetAutoPressFight(sender.isOn); }
 
 - (void)applyCampaignDelay:(double)value {
     IMSetAutoCampaignDelay(value);
@@ -554,12 +548,10 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     }
 
     self.trace.text = [NSString stringWithFormat:
-        @"map%d sum%d press%d pre%d fight%d kill%d   BTN%d a1=%llx a2=%llx m=%d",
+        @"map%d sum%d press%d pre%d fight%d kill%d",
         IMTraceValue(IMTraceChapterInit), IMTraceValue(IMTraceSummaryShown),
         IMTraceValue(IMTraceSummaryPressed), IMTraceValue(IMTracePreFightView),
-        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill),
-        IMSummaryPressCount(), IMSummaryArg1(), IMSummaryArg2(),
-        IMSummaryMenuMatches() ? 1 : 0];
+        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill)];
 
     self.readout.text = health.stale
         ? @"YOU    —\nENEMY  —"

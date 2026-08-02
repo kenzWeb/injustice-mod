@@ -346,6 +346,8 @@ static void * volatile sPreFightMenu;
 static long long volatile sSummaryWindowSeenMs;
 static long long volatile sPreFightSeenMs;
 static BOOL volatile sPreFightPressArmed;
+static void * volatile sSummaryWindow;
+static IMPreFightFn sSimulateClick;
 static IMFName sSummaryBattleName;
 static BOOL volatile sSummaryBattleValid;
 static int32_t volatile sCampaignChapter;
@@ -364,6 +366,7 @@ static void IMHookSummaryWindowShown(void *window) {
     if (!window) return;
 
     sSummaryWindowSeenMs = IMNowMillis();
+    sSummaryWindow = window;
     sSummaryBattleValid = NO;
 
     void *data = *(void **)((uintptr_t)window + OFF_SummaryWindowData);
@@ -385,13 +388,13 @@ static void IMHookPreFightOpponentView(void *menu) {
     sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
 
-    if (IMMasterOff() || !IMAutoPressFight() || !sPreFightStartFight) return;
+    if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
     if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoPressFight()) return;
+        if (IMMasterOff() || !IMAutoCampaign()) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);
@@ -427,20 +430,6 @@ static void *IMHookLevelActor(void *menu) {
     return sOrigLevelActor(menu);
 }
 
-typedef void (*IMSummaryPressFn)(void *menu, unsigned long long a1, unsigned long long a2);
-static IMSummaryPressFn sOrigSummaryPress;
-static unsigned long long sCapturedA1, sCapturedA2;
-static void * volatile sCapturedMenu;
-static int sCapturedPressCount;
-
-static void IMHookSummaryPress(void *menu, unsigned long long a1, unsigned long long a2) {
-    sCapturedMenu = menu;
-    sCapturedA1 = a1;
-    sCapturedA2 = a2;
-    sCapturedPressCount++;
-    sOrigSummaryPress(menu, a1, a2);
-}
-
 static IMCurrentBattleIdFn sOrigCurrentBattleId;
 
 static IMFName IMHookCurrentBattleId(void *menu) {
@@ -456,10 +445,30 @@ static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
 
 
+static void IMScheduleSummaryClick(int tick) {
+    if (tick > 8 || IMMasterOff() || !IMAutoCampaign() || !sSimulateClick) return;
+
+    if (!IMInCombat() && !IMFightStartedRecently()) {
+        void *window = sSummaryWindow;
+        if (window && IMNowMillis() - sSummaryWindowSeenMs < 8000) {
+            void *button = *(void **)((uintptr_t)window + OFF_SummaryFightButton);
+            if (button) {
+                IMTraceBump(IMTraceSummaryPressed);
+                sSimulateClick(button);
+                return;
+            }
+        }
+    }
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ IMScheduleSummaryClick(tick + 1); });
+}
+
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
     sPreFightPressArmed = YES;
+    IMScheduleSummaryClick(1);
     if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
 
     __block void *target = popup;
@@ -539,14 +548,13 @@ BOOL IMHooksInstall(void) {
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
     sKillCharacter = (IMKillCharacterFn)IMRuntimeAddress(RVA_KillCharacter);
+    sSimulateClick = (IMPreFightFn)IMRuntimeAddress(RVA_SimulateClick);
     MSHookFunction(IMRuntimeAddress(RVA_GetHealthPercentage),
                    (void *)IMHookGetHealthPercentage,
                    (void **)&sOrigGetHealthPercentage);
 
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
-    MSHookFunction(IMRuntimeAddress(RVA_CampaignStartBattle),
-                   (void *)IMHookSummaryPress, (void **)&sOrigSummaryPress);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignLadderView),
                    (void *)IMHookLadderView, (void **)&sOrigLadderView);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignLevelActor),
@@ -643,7 +651,3 @@ BOOL IMHooksInstall(void) {
 
 BOOL IMHooksInstalled(void) { return sInstalled; }
 
-int IMSummaryPressCount(void) { return sCapturedPressCount; }
-unsigned long long IMSummaryArg1(void) { return sCapturedA1; }
-unsigned long long IMSummaryArg2(void) { return sCapturedA2; }
-BOOL IMSummaryMenuMatches(void) { return sCapturedMenu && sCapturedMenu == sCampaignMenu; }

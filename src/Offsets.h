@@ -26,6 +26,8 @@
 #define RVA_CampaignLadderView      0x1D477E8
 #define RVA_CampaignLevelActor      0x1D46EB0
 #define OFF_SummaryWindowData       0x338
+#define OFF_SummaryFightButton      0x370
+#define RVA_SimulateClick           0x1E27CB8
 #define OFF_SummaryDataBattleName   0x40
 #define OFF_SummaryDataLocked       0x60
 
