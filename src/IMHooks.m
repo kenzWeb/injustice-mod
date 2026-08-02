@@ -13,7 +13,11 @@
 #import <dlfcn.h>
 #import <SystemConfiguration/SystemConfiguration.h>
 #import <sys/sysctl.h>
-#import <net/route.h>
+#import <sys/socket.h>
+
+#ifndef NET_RT_IFLIST
+#define NET_RT_IFLIST 3
+#endif
 
 typedef void (*IMSetCurrentHealthFn)(void *character, int newHealth);
 typedef void (*IMShowDamageMessageFn)(void *victim,
