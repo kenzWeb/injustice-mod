@@ -11,6 +11,9 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <dlfcn.h>
+#import <SystemConfiguration/SystemConfiguration.h>
+#import <sys/sysctl.h>
+#import <net/route.h>
 
 typedef void (*IMSetCurrentHealthFn)(void *character, int newHealth);
 typedef void (*IMShowDamageMessageFn)(void *victim,
@@ -58,6 +61,39 @@ static CFDictionaryRef IMHookCFNetworkCopySystemProxySettings(void) {
     return sOrigCFNetworkCopySystemProxySettings ? sOrigCFNetworkCopySystemProxySettings() : NULL;
 }
 
+typedef Boolean (*IMSCNetworkReachabilityGetFlagsFn)(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags *flags);
+static IMSCNetworkReachabilityGetFlagsFn sOrigSCNetworkReachabilityGetFlags;
+
+static Boolean IMHookSCNetworkReachabilityGetFlags(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags *flags) {
+    Boolean ret = sOrigSCNetworkReachabilityGetFlags ? sOrigSCNetworkReachabilityGetFlags(target, flags) : false;
+    if (ret && flags && !IMMasterOff() && IMBypassVPNCheck()) {
+        // Clear transient/direct VPN connection flags (1 << 0 and 1 << 17)
+        *flags &= ~(kSCNetworkReachabilityFlagsTransientConnection | kSCNetworkReachabilityFlagsIsDirect);
+        *flags |= kSCNetworkReachabilityFlagsReachable;
+    }
+    return ret;
+}
+
+typedef int (*IMSysctlFn)(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen);
+static IMSysctlFn sOrigSysctl;
+
+static int IMHookSysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
+    int ret = sOrigSysctl ? sOrigSysctl(name, namelen, oldp, oldlenp, newp, newlen) : -1;
+    if (ret == 0 && oldp && oldlenp && *oldlenp > 0 && name && namelen >= 6 && !IMMasterOff() && IMBypassVPNCheck()) {
+        if (name[0] == CTL_NET && name[1] == PF_ROUTE && name[4] == NET_RT_IFLIST) {
+            char *buf = (char *)oldp;
+            size_t size = *oldlenp;
+            for (size_t i = 0; i + 4 < size; i++) {
+                if (strncasecmp(buf + i, "utun", 4) == 0 ||
+                    strncasecmp(buf + i, "ipsec", 5) == 0) {
+                    memcpy(buf + i, "lo99", 4);
+                }
+            }
+        }
+    }
+    return ret;
+}
+
 typedef int (*IMGetifaddrsFn)(struct ifaddrs **ifap);
 static IMGetifaddrsFn sOrigGetifaddrs;
 
@@ -79,7 +115,12 @@ static int IMHookGetifaddrs(struct ifaddrs **ifap) {
                         memcpy(name, "lo9", 3);
                         memset(name + 3, 0, len - 3);
                     }
+                    curr->ifa_flags &= ~IFF_POINTOPOINT;
+                    curr->ifa_dstaddr = NULL;
                 }
+            }
+            if (curr->ifa_flags & IFF_POINTOPOINT) {
+                curr->ifa_flags &= ~IFF_POINTOPOINT;
             }
         }
     }
@@ -334,6 +375,14 @@ BOOL IMHooksInstall(void) {
     MSHookFunction((void *)getifaddrs,
                    (void *)IMHookGetifaddrs,
                    (void **)&sOrigGetifaddrs);
+
+    MSHookFunction((void *)SCNetworkReachabilityGetFlags,
+                   (void *)IMHookSCNetworkReachabilityGetFlags,
+                   (void **)&sOrigSCNetworkReachabilityGetFlags);
+
+    MSHookFunction((void *)sysctl,
+                   (void *)IMHookSysctl,
+                   (void **)&sOrigSysctl);
 
     Class neClass = NSClassFromString(@"NEVPNConnection");
     if (neClass) {
