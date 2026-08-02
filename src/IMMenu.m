@@ -238,6 +238,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addSwitchRow:@"Master OFF"
                    target:self action:@selector(onMasterOff:) accent:YES];
     [builder addCaption:@"Master OFF — полностью ванильное поведение"];
+    [builder addButtonRow:@"Скопировать лог" target:self action:@selector(onCopyLog)];
     [builder addCaption:IMLogPath()];
 
     [self.fixedRow setActive:NO];
@@ -371,6 +372,11 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onFreeze:(UISwitch *)sender     { IMSetFreezeAll(sender.isOn); }
 - (void)onMasterOff:(UISwitch *)sender  { IMSetMasterOff(sender.isOn); }
 - (void)onHeal                          { IMRequestHeal(); }
+
+- (void)onCopyLog {
+    UIPasteboard.generalPasteboard.string = IMLogTail(60);
+    self.trace.text = @"лог скопирован в буфер";
+}
 - (void)onAutoWin                       { IMTriggerAutoWin(); }
 - (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }

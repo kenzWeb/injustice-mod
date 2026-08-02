@@ -46,3 +46,23 @@ void IMLog(const char *format, ...) {
     fflush(sLogFile);
     pthread_mutex_unlock(&sLogLock);
 }
+
+NSString *IMLogTail(int lines) {
+    if (!sLogPath) return @"no log";
+
+    pthread_mutex_lock(&sLogLock);
+    if (sLogFile) fflush(sLogFile);
+    NSString *whole = [NSString stringWithContentsOfFile:sLogPath
+                                                encoding:NSUTF8StringEncoding
+                                                   error:NULL];
+    pthread_mutex_unlock(&sLogLock);
+
+    if (!whole.length) return @"empty log";
+
+    NSString *separator = [NSString stringWithFormat:@"%c", 10];
+    NSArray<NSString *> *all = [whole componentsSeparatedByString:separator];
+    NSUInteger take = MIN((NSUInteger)MAX(lines, 1), all.count);
+    NSArray<NSString *> *tail =
+        [all subarrayWithRange:NSMakeRange(all.count - take, take)];
+    return [tail componentsJoinedByString:separator];
+}
