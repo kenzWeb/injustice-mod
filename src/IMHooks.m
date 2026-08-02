@@ -383,6 +383,17 @@ static void IMHookPreFightOpponentView(void *menu) {
     sPreFightMenu = menu;
     sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
+
+    if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
+    if (IMInCombat() || IMFightStartedRecently()) return;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMInCombat() || IMFightStartedRecently()) return;
+        IMTraceBump(IMTraceFightStarted);
+        sPreFightStartFight(menu);
+    });
 }
 
 static IMPreFightFn sOrigPreFightStartFight;
@@ -390,6 +401,27 @@ static IMPreFightFn sOrigPreFightStartFight;
 static void IMHookPreFightStartFight(void *menu) {
     IMNoteFightStarted();
     sOrigPreFightStartFight(menu);
+}
+
+typedef void (*IMLadderViewFn)(void *menu, void *ladder, bool instant);
+typedef void *(*IMLevelActorFn)(void *menu);
+static IMLadderViewFn sOrigLadderView;
+static IMLevelActorFn sOrigLevelActor;
+
+static void IMCaptureCampaignMenu(void *menu) {
+    if (!menu) return;
+    sCampaignMenu = menu;
+    IMTraceBump(IMTraceChapterInit);
+}
+
+static void IMHookLadderView(void *menu, void *ladder, bool instant) {
+    IMCaptureCampaignMenu(menu);
+    sOrigLadderView(menu, ladder, instant);
+}
+
+static void *IMHookLevelActor(void *menu) {
+    IMCaptureCampaignMenu(menu);
+    return sOrigLevelActor(menu);
 }
 
 static IMCurrentBattleIdFn sOrigCurrentBattleId;
@@ -407,30 +439,29 @@ static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
 
 
-static void IMNavigateStep(int step) {
-    if (step > 2 || IMMasterOff() || !IMAutoCampaign()) return;
-    if (IMInCombat() || IMFightStartedRecently()) return;
+static void IMNavigateStep(int tick) {
+    if (tick > 8 || IMMasterOff() || !IMAutoCampaign()) return;
 
-    long long now = IMNowMillis();
-
-    if (step == 1) {
-        void *campaign = sCampaignMenu;
-        if (campaign && sStartCampaignBattle && sSummaryBattleValid &&
-            now - sSummaryWindowSeenMs < 8000) {
-            IMTraceBump(IMTraceSummaryPressed);
-            sStartCampaignBattle(campaign, sSummaryBattleName);
-        }
-    } else if (step == 2) {
+    if (!IMInCombat() && !IMFightStartedRecently()) {
+        long long now = IMNowMillis();
         void *prefight = sPreFightMenu;
+        void *campaign = sCampaignMenu;
+
         if (prefight && sPreFightStartFight && now - sPreFightSeenMs < 8000) {
             IMTraceBump(IMTraceFightStarted);
             sPreFightStartFight(prefight);
             return;
         }
+
+        if (campaign && sStartCampaignBattle && sSummaryBattleValid &&
+            now - sSummaryWindowSeenMs < 8000) {
+            IMTraceBump(IMTraceSummaryPressed);
+            sStartCampaignBattle(campaign, sSummaryBattleName);
+        }
     }
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ IMNavigateStep(step + 1); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ IMNavigateStep(tick + 1); });
 }
 
 static void IMHookResultsTransitionIn(void *popup) {
@@ -523,6 +554,10 @@ BOOL IMHooksInstall(void) {
 
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
+    MSHookFunction(IMRuntimeAddress(RVA_CampaignLadderView),
+                   (void *)IMHookLadderView, (void **)&sOrigLadderView);
+    MSHookFunction(IMRuntimeAddress(RVA_CampaignLevelActor),
+                   (void *)IMHookLevelActor, (void **)&sOrigLevelActor);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignCurrentBattleId),
                    (void *)IMHookCurrentBattleId, (void **)&sOrigCurrentBattleId);
     sCurrentBattleId = sOrigCurrentBattleId;
