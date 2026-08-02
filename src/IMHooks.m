@@ -347,6 +347,7 @@ static long long volatile sSummaryWindowSeenMs;
 static long long volatile sPreFightSeenMs;
 static BOOL volatile sPreFightPressArmed;
 static void * volatile sSummaryWindow;
+static int volatile sNavGeneration;
 static IMPreFightFn sSimulateClick;
 static IMFName sSummaryBattleName;
 static BOOL volatile sSummaryBattleValid;
@@ -384,6 +385,7 @@ static void IMHookSummaryWindowShown(void *window) {
 static void IMHookPreFightOpponentView(void *menu) {
     sOrigOpponentView(menu);
     if (!menu) return;
+    sNavGeneration++;
     sPreFightMenu = menu;
     sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
@@ -392,20 +394,25 @@ static void IMHookPreFightOpponentView(void *menu) {
     if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
+    const int generation = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (generation != sNavGeneration) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
+        void *current = sPreFightMenu;
+        if (!current || IMNowMillis() - sPreFightSeenMs > 4000) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightPressArmed = NO;
         IMNoteFightStarted();
-        sPreFightStartFight(menu);
+        sPreFightStartFight(current);
     });
 }
 
 static IMPreFightFn sOrigPreFightStartFight;
 
 static void IMHookPreFightStartFight(void *menu) {
+    sNavGeneration++;
     sPreFightPressArmed = NO;
     IMNoteFightStarted();
     sOrigPreFightStartFight(menu);
@@ -447,12 +454,13 @@ static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
 
 
-static void IMScheduleSummaryClick(int tick) {
+static void IMScheduleSummaryClick(int tick, int generation) {
     if (tick > 8 || IMMasterOff() || !IMAutoCampaign() || !sSimulateClick) return;
+    if (generation != sNavGeneration) return;
 
     if (!IMInCombat() && !IMFightStartedRecently()) {
         void *window = sSummaryWindow;
-        if (window && IMNowMillis() - sSummaryWindowSeenMs < 8000) {
+        if (window && IMNowMillis() - sSummaryWindowSeenMs < 3000) {
             void *button = *(void **)((uintptr_t)window + OFF_SummaryFightButton);
             if (button) {
                 IMTraceBump(IMTraceSummaryPressed);
@@ -463,14 +471,15 @@ static void IMScheduleSummaryClick(int tick) {
     }
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ IMScheduleSummaryClick(tick + 1); });
+                   dispatch_get_main_queue(), ^{ IMScheduleSummaryClick(tick + 1, generation); });
 }
 
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
     sPreFightPressArmed = YES;
-    IMScheduleSummaryClick(1);
+    sNavGeneration++;
+    IMScheduleSummaryClick(1, sNavGeneration);
     if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
 
     __block void *target = popup;
