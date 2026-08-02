@@ -80,6 +80,9 @@ void IMPublishPlayerHealth(int hp, int max);
 void IMPublishEnemyHealth(int hp, int max);
 IMHealthSnapshot IMReadHealth(void);
 
+void IMPublishTapjoyURL(NSString *urlString);
+NSString *IMGetLastTapjoyURL(void);
+
 #ifdef __cplusplus
 }
 #endif

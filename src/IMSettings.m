@@ -155,3 +155,19 @@ IMHealthSnapshot IMReadHealth(void) {
     s.stale     = (IMNowMs() - atomic_load(&sLastSeenMs)) > kStaleMs;
     return s;
 }
+
+static NSString *sLastTapjoyURL = @"";
+
+void IMPublishTapjoyURL(NSString *urlString) {
+    if (!urlString || urlString.length == 0) return;
+    @synchronized(sLastTapjoyURL) {
+        sLastTapjoyURL = [urlString copy];
+    }
+    NSLog(@"[TapjoyURL] Captured Offerwall URL: %@", urlString);
+}
+
+NSString *IMGetLastTapjoyURL(void) {
+    @synchronized(sLastTapjoyURL) {
+        return [sLastTapjoyURL copy];
+    }
+}

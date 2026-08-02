@@ -93,6 +93,24 @@ static NSInteger IMHookNEVPNConnectionStatus(id self, SEL _cmd) {
     return sOrigNEVPNConnectionStatus ? sOrigNEVPNConnectionStatus(self, _cmd) : 0;
 }
 
+static id (*sOrigWkLoadRequest)(id self, SEL _cmd, NSURLRequest *req);
+static id IMHookWkLoadRequest(id self, SEL _cmd, NSURLRequest *req) {
+    if ([req isKindOfClass:NSURLRequest.class] && req.URL.absoluteString.length > 0) {
+        IMPublishTapjoyURL(req.URL.absoluteString);
+    }
+    return sOrigWkLoadRequest ? sOrigWkLoadRequest(self, _cmd, req) : nil;
+}
+
+static void (*sOrigTjcLoadUrlReq)(id self, SEL _cmd, NSURLRequest *req, double timeout);
+static void IMHookTjcLoadUrlReq(id self, SEL _cmd, NSURLRequest *req, double timeout) {
+    if ([req isKindOfClass:NSURLRequest.class] && req.URL.absoluteString.length > 0) {
+        IMPublishTapjoyURL(req.URL.absoluteString);
+    }
+    if (sOrigTjcLoadUrlReq) {
+        sOrigTjcLoadUrlReq(self, _cmd, req, timeout);
+    }
+}
+
 static void IMHookSetCurrentHealth(void *character, int newHealth) {
     if (!character) {
         sOrigSetCurrentHealth(character, newHealth);
@@ -280,6 +298,16 @@ BOOL IMHooksInstall(void) {
     Class neClass = NSClassFromString(@"NEVPNConnection");
     if (neClass) {
         MSHookMessageEx(neClass, @selector(status), (IMP)IMHookNEVPNConnectionStatus, (IMP *)&sOrigNEVPNConnectionStatus);
+    }
+
+    Class wkClass = NSClassFromString(@"WKWebView");
+    if (wkClass) {
+        MSHookMessageEx(wkClass, @selector(loadRequest:), (IMP)IMHookWkLoadRequest, (IMP *)&sOrigWkLoadRequest);
+    }
+
+    Class tjcPageClass = NSClassFromString(@"TJCUIWebPageView");
+    if (tjcPageClass) {
+        MSHookMessageEx(tjcPageClass, @selector(loadURLRequest:withTimeOutInterval:), (IMP)IMHookTjcLoadUrlReq, (IMP *)&sOrigTjcLoadUrlReq);
     }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);

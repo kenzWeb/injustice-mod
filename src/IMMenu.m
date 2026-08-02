@@ -202,6 +202,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
                                     target:self action:@selector(onBypassVPNCheck:) accent:YES];
     self.vpnSwitch.on = IMBypassVPNCheck();
     [builder addCaption:@"скрывает VPN/прокси от Tapjoy и системы"];
+    [builder addButtonRow:@"Копировать ссылку Tapjoy" target:self action:@selector(onCopyTapjoyURL)];
     [builder addSeparator];
 
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
@@ -349,6 +350,24 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
 - (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
 - (void)onBypassVPNCheck:(UISwitch *)sender { IMSetBypassVPNCheck(sender.isOn); }
+
+- (void)onCopyTapjoyURL {
+    NSString *url = IMGetLastTapjoyURL();
+    if (url && url.length > 0) {
+        [UIPasteboard generalPasteboard].string = url;
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Tapjoy URL скопирован"
+                                                                       message:url
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+    } else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Ссылка еще не перехвачена"
+                                                                       message:@"Зайдите в Tapjoy Offerwall в игре, затем нажмите эту кнопку еще раз."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+    }
+}
 
 - (void)onPresetSave:(UIButton *)sender {
     IMPresetSave(sender.tag);
