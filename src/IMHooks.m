@@ -155,22 +155,6 @@ static NSString * IMHookTjConnSubtype(id self, SEL _cmd) {
     return sOrigTjConnSubtype ? sOrigTjConnSubtype(self, _cmd) : @"wifi";
 }
 
-static BOOL (*sOrigTjIsContentReady)(id self, SEL _cmd);
-static BOOL IMHookTjIsContentReady(id self, SEL _cmd) {
-    if (!IMMasterOff() && IMBypassVPNCheck()) {
-        return YES;
-    }
-    return sOrigTjIsContentReady ? sOrigTjIsContentReady(self, _cmd) : YES;
-}
-
-static BOOL (*sOrigTjIsContentAvailable)(id self, SEL _cmd);
-static BOOL IMHookTjIsContentAvailable(id self, SEL _cmd) {
-    if (!IMMasterOff() && IMBypassVPNCheck()) {
-        return YES;
-    }
-    return sOrigTjIsContentAvailable ? sOrigTjIsContentAvailable(self, _cmd) : YES;
-}
-
 static NSURLRequest *IMCleanTapjoyRequestURL(NSURLRequest *req) {
     if (!req || !req.URL) return req;
     NSString *urlStr = req.URL.absoluteString;
@@ -426,12 +410,6 @@ BOOL IMHooksInstall(void) {
             MSHookMessageEx(metaCls, @selector(connectionType), (IMP)IMHookTjConnType, (IMP *)&sOrigTjConnType);
             MSHookMessageEx(metaCls, @selector(connectionSubtype), (IMP)IMHookTjConnSubtype, (IMP *)&sOrigTjConnSubtype);
         }
-    }
-
-    Class tjPlacementClass = NSClassFromString(@"TJPlacement");
-    if (tjPlacementClass) {
-        MSHookMessageEx(tjPlacementClass, @selector(isContentReady), (IMP)IMHookTjIsContentReady, (IMP *)&sOrigTjIsContentReady);
-        MSHookMessageEx(tjPlacementClass, @selector(isContentAvailable), (IMP)IMHookTjIsContentAvailable, (IMP *)&sOrigTjIsContentAvailable);
     }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);
