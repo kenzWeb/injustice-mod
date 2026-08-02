@@ -286,6 +286,36 @@ void IMForceRequirementsMet(void *outArray) {
 typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
+typedef float (*IMHealthPercentFn)(void *character);
+static IMHealthPercentFn sOrigGetHealthPercentage;
+static _Thread_local BOOL sInAutoFinish;
+
+static float IMHookGetHealthPercentage(void *character) {
+    if (!character || sInAutoFinish) return sOrigGetHealthPercentage(character);
+
+    const int current = IMCharacterCurrentHealth(character);
+    const int maximum = IMCharacterMaxHealth(character);
+    const BOOL isPlayer = IMIsPlayerCharacter(character);
+
+    if (maximum > 0) {
+        if (isPlayer) {
+            IMPublishPlayerHealth(current, maximum);
+        } else {
+            IMPublishEnemyHealth(current, maximum);
+        }
+    }
+
+    if (!IMMasterOff() && sOrigSetCurrentHealth && !isPlayer &&
+        maximum > 0 && current > 0 &&
+        (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
+        sInAutoFinish = YES;
+        sOrigSetCurrentHealth(character, 0);
+        sInAutoFinish = NO;
+    }
+
+    return sOrigGetHealthPercentage(character);
+}
+
 typedef struct { uint32_t part[3]; } IMFName;
 typedef void (*IMChapterInitFn)(void *menu, int32_t chapterIndex, IMFName battle);
 typedef void (*IMStartCampaignBattleFn)(void *menu, IMFName battleID);
@@ -390,6 +420,10 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    MSHookFunction(IMRuntimeAddress(RVA_GetHealthPercentage),
+                   (void *)IMHookGetHealthPercentage,
+                   (void **)&sOrigGetHealthPercentage);
+
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),
