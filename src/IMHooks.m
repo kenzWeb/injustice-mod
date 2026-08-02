@@ -345,6 +345,7 @@ static void * volatile sCampaignMenu;
 static void * volatile sPreFightMenu;
 static long long volatile sSummaryWindowSeenMs;
 static long long volatile sPreFightSeenMs;
+static BOOL volatile sPreFightPressArmed;
 static IMFName sSummaryBattleName;
 static BOOL volatile sSummaryBattleValid;
 static int32_t volatile sCampaignChapter;
@@ -385,6 +386,7 @@ static void IMHookPreFightOpponentView(void *menu) {
     IMTraceBump(IMTracePreFightView);
 
     if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
+    if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
@@ -399,6 +401,7 @@ static void IMHookPreFightOpponentView(void *menu) {
 static IMPreFightFn sOrigPreFightStartFight;
 
 static void IMHookPreFightStartFight(void *menu) {
+    sPreFightPressArmed = NO;
     IMNoteFightStarted();
     sOrigPreFightStartFight(menu);
 }
@@ -477,6 +480,7 @@ static void IMNavigateStep(int tick) {
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
+    sPreFightPressArmed = YES;
     if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
 
     __block void *target = popup;
