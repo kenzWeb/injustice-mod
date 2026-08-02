@@ -287,7 +287,11 @@ typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
 typedef float (*IMHealthPercentFn)(void *character);
-static IMHealthPercentFn sOrigGetHealthPercentage;
+typedef void (*IMKillCharacterFn)(void *causer, void *victim, void *instigator);
+
+static IMHealthPercentFn  sOrigGetHealthPercentage;
+static IMKillCharacterFn  sKillCharacter;
+static void * volatile    sLastPlayerCharacter;
 static _Thread_local BOOL sInAutoFinish;
 
 static float IMHookGetHealthPercentage(void *character) {
@@ -299,17 +303,19 @@ static float IMHookGetHealthPercentage(void *character) {
 
     if (maximum > 0) {
         if (isPlayer) {
+            sLastPlayerCharacter = character;
             IMPublishPlayerHealth(current, maximum);
         } else {
             IMPublishEnemyHealth(current, maximum);
         }
     }
 
-    if (!IMMasterOff() && sOrigSetCurrentHealth && !isPlayer &&
+    void *causer = sLastPlayerCharacter;
+    if (!IMMasterOff() && sKillCharacter && causer && !isPlayer &&
         maximum > 0 && current > 0 &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;
-        sOrigSetCurrentHealth(character, 0);
+        sKillCharacter(causer, character, causer);
         sInAutoFinish = NO;
     }
 
@@ -420,6 +426,7 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    sKillCharacter = (IMKillCharacterFn)IMRuntimeAddress(RVA_KillCharacter);
     MSHookFunction(IMRuntimeAddress(RVA_GetHealthPercentage),
                    (void *)IMHookGetHealthPercentage,
                    (void **)&sOrigGetHealthPercentage);
