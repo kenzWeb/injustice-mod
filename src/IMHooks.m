@@ -10,6 +10,7 @@
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <dlfcn.h>
 
 typedef void (*IMSetCurrentHealthFn)(void *character, int newHealth);
 typedef void (*IMShowDamageMessageFn)(void *victim,
@@ -39,11 +40,25 @@ static IMCurrentResourceFn   sOrigGetCurrentPower;
 static IMCurrentResourceFn   sOrigGetCurrentEnergy;
 static BOOL sInstalled;
 
+static BOOL IMShouldHookForCaller(void *callerAddr) {
+    if (!callerAddr) return YES;
+    Dl_info info;
+    if (dladdr(callerAddr, &info) && info.dli_fname) {
+        const char *fname = info.dli_fname;
+        // Never alter getifaddrs/network for main game binary so UE4/WB account login is never logged out
+        if (strcasestr(fname, "Injustice2Mobile") != NULL) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
 typedef CFDictionaryRef (*IMCFNetworkCopySystemProxySettingsFn)(void);
 static IMCFNetworkCopySystemProxySettingsFn sOrigCFNetworkCopySystemProxySettings;
 
 static CFDictionaryRef IMHookCFNetworkCopySystemProxySettings(void) {
-    if (!IMMasterOff() && IMBypassVPNCheck()) {
+    void *caller = __builtin_return_address(0);
+    if (!IMMasterOff() && IMBypassVPNCheck() && IMShouldHookForCaller(caller)) {
         static CFDictionaryRef sEmptyProxyDict;
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
@@ -62,7 +77,8 @@ static IMGetifaddrsFn sOrigGetifaddrs;
 
 static int IMHookGetifaddrs(struct ifaddrs **ifap) {
     int ret = sOrigGetifaddrs ? sOrigGetifaddrs(ifap) : -1;
-    if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck()) {
+    void *caller = __builtin_return_address(0);
+    if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck() && IMShouldHookForCaller(caller)) {
         for (struct ifaddrs *curr = *ifap; curr != NULL; curr = curr->ifa_next) {
             char *name = curr->ifa_name;
             if (name) {
@@ -93,19 +109,56 @@ static NSInteger IMHookNEVPNConnectionStatus(id self, SEL _cmd) {
     return sOrigNEVPNConnectionStatus ? sOrigNEVPNConnectionStatus(self, _cmd) : 0;
 }
 
+static NSString * (*sOrigTjConnType)(id self, SEL _cmd);
+static NSString * IMHookTjConnType(id self, SEL _cmd) {
+    if (!IMMasterOff() && IMBypassVPNCheck()) {
+        return @"wifi";
+    }
+    return sOrigTjConnType ? sOrigTjConnType(self, _cmd) : @"wifi";
+}
+
+static NSString * (*sOrigTjConnSubtype)(id self, SEL _cmd);
+static NSString * IMHookTjConnSubtype(id self, SEL _cmd) {
+    if (!IMMasterOff() && IMBypassVPNCheck()) {
+        return @"wifi";
+    }
+    return sOrigTjConnSubtype ? sOrigTjConnSubtype(self, _cmd) : @"wifi";
+}
+
+static NSURLRequest *IMCleanTapjoyRequestURL(NSURLRequest *req) {
+    if (!req || !req.URL) return req;
+    NSString *urlStr = req.URL.absoluteString;
+    if ([urlStr containsString:@"offerwall"] || [urlStr containsString:@"tapjoy"] || [urlStr containsString:@"unity3d"]) {
+        IMPublishTapjoyURL(urlStr);
+        BOOL modified = NO;
+        if ([urlStr containsString:@"is_vpn=true"] || [urlStr containsString:@"is_vpn=1"]) {
+            urlStr = [urlStr stringByReplacingOccurrencesOfString:@"is_vpn=true" withString:@"is_vpn=false"];
+            urlStr = [urlStr stringByReplacingOccurrencesOfString:@"is_vpn=1" withString:@"is_vpn=0"];
+            modified = YES;
+        }
+        if ([urlStr containsString:@"connection_type=vpn"] || [urlStr containsString:@"connection_type=other"]) {
+            urlStr = [urlStr stringByReplacingOccurrencesOfString:@"connection_type=vpn" withString:@"connection_type=wifi"];
+            urlStr = [urlStr stringByReplacingOccurrencesOfString:@"connection_type=other" withString:@"connection_type=wifi"];
+            modified = YES;
+        }
+        if (modified) {
+            NSMutableURLRequest *mreq = [req mutableCopy];
+            mreq.URL = [NSURL URLWithString:urlStr];
+            return mreq;
+        }
+    }
+    return req;
+}
+
 static id (*sOrigWkLoadRequest)(id self, SEL _cmd, NSURLRequest *req);
 static id IMHookWkLoadRequest(id self, SEL _cmd, NSURLRequest *req) {
-    if ([req isKindOfClass:NSURLRequest.class] && req.URL.absoluteString.length > 0) {
-        IMPublishTapjoyURL(req.URL.absoluteString);
-    }
+    req = IMCleanTapjoyRequestURL(req);
     return sOrigWkLoadRequest ? sOrigWkLoadRequest(self, _cmd, req) : nil;
 }
 
 static void (*sOrigTjcLoadUrlReq)(id self, SEL _cmd, NSURLRequest *req, double timeout);
 static void IMHookTjcLoadUrlReq(id self, SEL _cmd, NSURLRequest *req, double timeout) {
-    if ([req isKindOfClass:NSURLRequest.class] && req.URL.absoluteString.length > 0) {
-        IMPublishTapjoyURL(req.URL.absoluteString);
-    }
+    req = IMCleanTapjoyRequestURL(req);
     if (sOrigTjcLoadUrlReq) {
         sOrigTjcLoadUrlReq(self, _cmd, req, timeout);
     }
@@ -308,6 +361,15 @@ BOOL IMHooksInstall(void) {
     Class tjcPageClass = NSClassFromString(@"TJCUIWebPageView");
     if (tjcPageClass) {
         MSHookMessageEx(tjcPageClass, @selector(loadURLRequest:withTimeOutInterval:), (IMP)IMHookTjcLoadUrlReq, (IMP *)&sOrigTjcLoadUrlReq);
+    }
+
+    Class tjReach = NSClassFromString(@"TJCNetReachability");
+    if (tjReach) {
+        Class metaCls = object_getClass(tjReach);
+        if (metaCls) {
+            MSHookMessageEx(metaCls, @selector(connectionType), (IMP)IMHookTjConnType, (IMP *)&sOrigTjConnType);
+            MSHookMessageEx(metaCls, @selector(connectionSubtype), (IMP)IMHookTjConnSubtype, (IMP *)&sOrigTjConnSubtype);
+        }
     }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);
