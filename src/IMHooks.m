@@ -35,6 +35,10 @@ typedef float (*IMPowerPercentFn)(void *character, int abilityType);
 typedef float (*IMCurrentResourceFn)(void *character);
 typedef float (*IMResourceCurrentFn)(void *resource);
 
+static long long IMNowMillis(void) {
+    return (long long)(CACurrentMediaTime() * 1000.0);
+}
+
 static IMSetCurrentHealthFn  sOrigSetCurrentHealth;
 static IMShowDamageMessageFn sOrigShowDamageMessage;
 static IMHasEnoughFn         sOrigHasEnoughFunds;
@@ -293,6 +297,7 @@ typedef void (*IMKillCharacterFn)(void *causer, void *victim, void *instigator);
 static IMHealthPercentFn  sOrigGetHealthPercentage;
 static IMKillCharacterFn  sKillCharacter;
 static void * volatile    sLastPlayerCharacter;
+static long long volatile sLastPlayerSeenMs;
 static _Thread_local BOOL sInAutoFinish;
 
 static float IMHookGetHealthPercentage(void *character) {
@@ -305,6 +310,7 @@ static float IMHookGetHealthPercentage(void *character) {
     if (maximum > 0) {
         if (isPlayer) {
             sLastPlayerCharacter = character;
+            sLastPlayerSeenMs = IMNowMillis();
             IMPublishPlayerHealth(current, maximum);
         } else {
             IMPublishEnemyHealth(current, maximum);
@@ -312,6 +318,7 @@ static float IMHookGetHealthPercentage(void *character) {
     }
 
     void *causer = sLastPlayerCharacter;
+    if (causer && IMNowMillis() - sLastPlayerSeenMs > 200) causer = NULL;
     if (!IMMasterOff() && sKillCharacter && causer && !isPlayer &&
         maximum > 0 && current > 0 &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
@@ -336,10 +343,6 @@ static IMStartCampaignBattleFn sGoToFightInCurrentTab;
 static IMCurrentBattleIdFn     sCurrentBattleId;
 static IMPreFightFn            sOrigOpponentView;
 static IMPreFightFn            sPreFightStartFight;
-
-static long long IMNowMillis(void) {
-    return (long long)(CACurrentMediaTime() * 1000.0);
-}
 
 static void * volatile sCampaignMenu;
 static void * volatile sPreFightMenu;
@@ -414,6 +417,8 @@ static IMPreFightFn sOrigPreFightStartFight;
 static void IMHookPreFightStartFight(void *menu) {
     sNavGeneration++;
     sPreFightPressArmed = NO;
+    sLastPlayerCharacter = NULL;
+    sSummaryWindow = NULL;
     IMNoteFightStarted();
     sOrigPreFightStartFight(menu);
 }
@@ -477,15 +482,18 @@ static void IMScheduleSummaryClick(int tick, int generation) {
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
+    sLastPlayerCharacter = NULL;
     sPreFightPressArmed = YES;
     sNavGeneration++;
     IMScheduleSummaryClick(1, sNavGeneration);
     if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
 
     __block void *target = popup;
+    const int resultsGeneration = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (resultsGeneration != sNavGeneration) return;
         sResultsOnContinue(target);
     });
 }
