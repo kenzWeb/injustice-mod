@@ -20,7 +20,7 @@ InjusticeMod_FILES = \
     src/IMMenu.m
 
 InjusticeMod_CFLAGS     = -fobjc-arc -I$(THEOS_PROJECT_DIR)/src -Wno-unused-variable -Wno-deprecated-declarations
-InjusticeMod_FRAMEWORKS = UIKit Foundation QuartzCore CFNetwork SystemConfiguration
+InjusticeMod_FRAMEWORKS = UIKit Foundation QuartzCore CFNetwork SystemConfiguration WebKit
 InjusticeMod_LIBRARIES  = substrate
 
 include $(THEOS_MAKE_PATH)/tweak.mk
