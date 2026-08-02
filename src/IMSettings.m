@@ -47,7 +47,7 @@ void IMSettingsInit(void) {
     atomic_store(&sDamageMultiplierScaled, kScale);
     atomic_store(&sDefenseMultiplierScaled, kScale);
     atomic_store(&sFixedDamage, 1000LL);
-    atomic_store(&sAutoCampaignDelayMs, 1500LL);
+    atomic_store(&sAutoCampaignDelayMs, 3000LL);
     atomic_store(&sBypassVPNCheck, true);
 }
 
@@ -173,9 +173,8 @@ BOOL IMAutoCampaignMayStartBattle(void) {
 static atomic_llong sFightStartedMs;
 
 void IMNoteFightStarted(void) {
-    long long now = IMNowMs();
-    atomic_store(&sFightStartedMs, now);
-    atomic_store(&sCombatStartMs, now);
+    atomic_store(&sFightStartedMs, IMNowMs());
+    atomic_store(&sCombatStartMs, 0);
 }
 
 void IMNoteFightEnded(void) {
@@ -252,13 +251,20 @@ BOOL IMAutoWinActive(void) {
     return IMNowMs() < atomic_load(&sAutoWinDeadlineMs);
 }
 
+static void IMArmCombatClock(void) {
+    long long expected = 0;
+    atomic_compare_exchange_strong(&sCombatStartMs, &expected, IMNowMs());
+}
+
 void IMPublishPlayerHealth(int hp, int max) {
+    IMArmCombatClock();
     atomic_store(&sPlayerHP, hp);
     atomic_store(&sPlayerMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());
 }
 
 void IMPublishEnemyHealth(int hp, int max) {
+    IMArmCombatClock();
     atomic_store(&sEnemyHP, hp);
     atomic_store(&sEnemyMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());
