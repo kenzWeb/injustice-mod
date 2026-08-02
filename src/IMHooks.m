@@ -397,6 +397,8 @@ static void IMHookPreFightOpponentView(void *menu) {
         if (IMMasterOff() || !IMAutoCampaign()) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         IMTraceBump(IMTraceFightStarted);
+        sPreFightPressArmed = NO;
+        IMNoteFightStarted();
         sPreFightStartFight(menu);
     });
 }
