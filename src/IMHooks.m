@@ -43,7 +43,15 @@ static IMCFNetworkCopySystemProxySettingsFn sOrigCFNetworkCopySystemProxySetting
 
 static CFDictionaryRef IMHookCFNetworkCopySystemProxySettings(void) {
     if (!IMMasterOff() && IMBypassVPNCheck()) {
-        return NULL;
+        static CFDictionaryRef sEmptyProxyDict;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            sEmptyProxyDict = CFDictionaryCreate(kCFAllocatorDefault, NULL, NULL, 0,
+                                                 &kCFTypeDictionaryKeyCallBacks,
+                                                 &kCFTypeDictionaryValueCallBacks);
+        });
+        if (sEmptyProxyDict) CFRetain(sEmptyProxyDict);
+        return sEmptyProxyDict;
     }
     return sOrigCFNetworkCopySystemProxySettings ? sOrigCFNetworkCopySystemProxySettings() : NULL;
 }
@@ -54,11 +62,8 @@ static IMGetifaddrsFn sOrigGetifaddrs;
 static int IMHookGetifaddrs(struct ifaddrs **ifap) {
     int ret = sOrigGetifaddrs ? sOrigGetifaddrs(ifap) : -1;
     if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck()) {
-        struct ifaddrs *prev = NULL;
-        struct ifaddrs *curr = *ifap;
-        while (curr) {
-            const char *name = curr->ifa_name;
-            BOOL isVpn = NO;
+        for (struct ifaddrs *curr = *ifap; curr != NULL; curr = curr->ifa_next) {
+            char *name = curr->ifa_name;
             if (name) {
                 if (strncasecmp(name, "utun", 4) == 0 ||
                     strncasecmp(name, "tun", 3) == 0 ||
@@ -67,19 +72,13 @@ static int IMHookGetifaddrs(struct ifaddrs **ifap) {
                     strncasecmp(name, "tap", 3) == 0 ||
                     strncasecmp(name, "wg", 2) == 0 ||
                     strcasestr(name, "vpn") != NULL) {
-                    isVpn = YES;
+                    size_t len = strlen(name);
+                    if (len >= 3) {
+                        memcpy(name, "lo9", 3);
+                        memset(name + 3, 0, len - 3);
+                    }
                 }
             }
-            if (isVpn) {
-                if (prev) {
-                    prev->ifa_next = curr->ifa_next;
-                } else {
-                    *ifap = curr->ifa_next;
-                }
-            } else {
-                prev = curr;
-            }
-            curr = curr->ifa_next;
         }
     }
     return ret;
@@ -279,11 +278,7 @@ BOOL IMHooksInstall(void) {
 
     Class neClass = NSClassFromString(@"NEVPNConnection");
     if (neClass) {
-        Method m = class_getInstanceMethod(neClass, @selector(status));
-        if (m) {
-            sOrigNEVPNConnectionStatus = (NSInteger (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)IMHookNEVPNConnectionStatus);
-        }
+        MSHookMessageEx(neClass, @selector(status), (IMP)IMHookNEVPNConnectionStatus, (IMP *)&sOrigNEVPNConnectionStatus);
     }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);
