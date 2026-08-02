@@ -40,25 +40,11 @@ static IMCurrentResourceFn   sOrigGetCurrentPower;
 static IMCurrentResourceFn   sOrigGetCurrentEnergy;
 static BOOL sInstalled;
 
-static BOOL IMShouldHookForCaller(void *callerAddr) {
-    if (!callerAddr) return YES;
-    Dl_info info;
-    if (dladdr(callerAddr, &info) && info.dli_fname) {
-        const char *fname = info.dli_fname;
-        // Never alter getifaddrs/network for main game binary so UE4/WB account login is never logged out
-        if (strcasestr(fname, "Injustice2Mobile") != NULL) {
-            return NO;
-        }
-    }
-    return YES;
-}
-
 typedef CFDictionaryRef (*IMCFNetworkCopySystemProxySettingsFn)(void);
 static IMCFNetworkCopySystemProxySettingsFn sOrigCFNetworkCopySystemProxySettings;
 
 static CFDictionaryRef IMHookCFNetworkCopySystemProxySettings(void) {
-    void *caller = __builtin_return_address(0);
-    if (!IMMasterOff() && IMBypassVPNCheck() && IMShouldHookForCaller(caller)) {
+    if (!IMMasterOff() && IMBypassVPNCheck()) {
         static CFDictionaryRef sEmptyProxyDict;
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
@@ -77,8 +63,7 @@ static IMGetifaddrsFn sOrigGetifaddrs;
 
 static int IMHookGetifaddrs(struct ifaddrs **ifap) {
     int ret = sOrigGetifaddrs ? sOrigGetifaddrs(ifap) : -1;
-    void *caller = __builtin_return_address(0);
-    if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck() && IMShouldHookForCaller(caller)) {
+    if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck()) {
         for (struct ifaddrs *curr = *ifap; curr != NULL; curr = curr->ifa_next) {
             char *name = curr->ifa_name;
             if (name) {
@@ -128,7 +113,9 @@ static NSString * IMHookTjConnSubtype(id self, SEL _cmd) {
 static NSURLRequest *IMCleanTapjoyRequestURL(NSURLRequest *req) {
     if (!req || !req.URL) return req;
     NSString *urlStr = req.URL.absoluteString;
-    if ([urlStr containsString:@"offerwall"] || [urlStr containsString:@"tapjoy"] || [urlStr containsString:@"unity3d"]) {
+    if ([urlStr containsString:@"offerwall"] || [urlStr containsString:@"tapjoy"] ||
+        [urlStr containsString:@"unity3d"] || [urlStr containsString:@"doubleclick"] ||
+        [urlStr containsString:@"googleads"]) {
         IMPublishTapjoyURL(urlStr);
         BOOL modified = NO;
         if ([urlStr containsString:@"is_vpn=true"] || [urlStr containsString:@"is_vpn=1"]) {
