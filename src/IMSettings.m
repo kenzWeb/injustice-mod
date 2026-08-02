@@ -14,6 +14,7 @@ static atomic_bool sHealRequested;
 static atomic_bool sInfiniteEnergy;
 static atomic_bool sFreezeAI;
 static atomic_bool sBypassRequirements;
+static atomic_bool sBypassVPNCheck;
 static atomic_llong sAutoWinDeadlineMs;
 
 static atomic_llong sFixedDamage;
@@ -38,6 +39,7 @@ void IMSettingsInit(void) {
     atomic_store(&sDamageMultiplierScaled, kScale);
     atomic_store(&sDefenseMultiplierScaled, kScale);
     atomic_store(&sFixedDamage, 1000LL);
+    atomic_store(&sBypassVPNCheck, true);
 }
 
 BOOL IMMasterOff(void) { return atomic_load(&sMasterOff); }
@@ -90,6 +92,9 @@ void IMSetFreezeAI(BOOL on) { atomic_store(&sFreezeAI, on); }
 BOOL IMBypassRequirements(void) { return atomic_load(&sBypassRequirements); }
 void IMSetBypassRequirements(BOOL on) { atomic_store(&sBypassRequirements, on); }
 
+BOOL IMBypassVPNCheck(void) { return atomic_load(&sBypassVPNCheck); }
+void IMSetBypassVPNCheck(BOOL on) { atomic_store(&sBypassVPNCheck, on); }
+
 IMSettingsSnapshot IMCaptureSettings(void) {
     IMSettingsSnapshot s;
     s.godMode            = IMGodMode();
@@ -98,6 +103,7 @@ IMSettingsSnapshot IMCaptureSettings(void) {
     s.infiniteEnergy     = IMInfiniteEnergy();
     s.freezeAI           = IMFreezeAI();
     s.fixedDamageEnabled = IMFixedDamageEnabled();
+    s.bypassVPNCheck     = IMBypassVPNCheck();
     s.fixedDamage        = IMFixedDamage();
     s.damageMultiplier   = IMDamageMultiplier();
     s.defenseMultiplier  = IMDefenseMultiplier();
@@ -111,6 +117,7 @@ void IMApplySettings(IMSettingsSnapshot s) {
     IMSetInfiniteEnergy(s.infiniteEnergy);
     IMSetFreezeAI(s.freezeAI);
     IMSetFixedDamageEnabled(s.fixedDamageEnabled);
+    IMSetBypassVPNCheck(s.bypassVPNCheck);
     IMSetFixedDamage(s.fixedDamage);
     IMSetDamageMultiplier(s.damageMultiplier);
     IMSetDefenseMultiplier(s.defenseMultiplier);

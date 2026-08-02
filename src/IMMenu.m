@@ -23,6 +23,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) UISwitch          *energySwitch;
 @property (nonatomic, strong) UISwitch          *freezeAISwitch;
 @property (nonatomic, strong) UISwitch          *fixedSwitch;
+@property (nonatomic, strong) UISwitch          *vpnSwitch;
 @property (nonatomic, strong) NSArray<UIButton *> *loadButtons;
 @property (nonatomic, strong) IMValueRow        *damageRow;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
@@ -197,6 +198,12 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addCaption:@"снимает клиентский замок входа в испытания"];
     [builder addSeparator];
 
+    self.vpnSwitch = [builder addSwitchRow:@"Обход проверки VPN (Tapjoy)"
+                                    target:self action:@selector(onBypassVPNCheck:) accent:YES];
+    self.vpnSwitch.on = IMBypassVPNCheck();
+    [builder addCaption:@"скрывает VPN/прокси от Tapjoy и системы"];
+    [builder addSeparator];
+
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
                                           target:self action:@selector(onPresetLoad:)];
     [builder addButtonTrioRow:@"Сохранить в"
@@ -341,6 +348,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
 - (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
+- (void)onBypassVPNCheck:(UISwitch *)sender { IMSetBypassVPNCheck(sender.isOn); }
 
 - (void)onPresetSave:(UIButton *)sender {
     IMPresetSave(sender.tag);

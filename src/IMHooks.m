@@ -4,6 +4,11 @@
 #import "IMDamage.h"
 #import "Offsets.h"
 #import <substrate.h>
+#import <ifaddrs.h>
+#import <net/if.h>
+#import <CFNetwork/CFNetwork.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 typedef void (*IMSetCurrentHealthFn)(void *character, int newHealth);
 typedef void (*IMShowDamageMessageFn)(void *victim,
@@ -32,6 +37,61 @@ static IMPowerPercentFn      sOrigGetPowerPercentage;
 static IMCurrentResourceFn   sOrigGetCurrentPower;
 static IMCurrentResourceFn   sOrigGetCurrentEnergy;
 static BOOL sInstalled;
+
+typedef CFDictionaryRef (*IMCFNetworkCopySystemProxySettingsFn)(void);
+static IMCFNetworkCopySystemProxySettingsFn sOrigCFNetworkCopySystemProxySettings;
+
+static CFDictionaryRef IMHookCFNetworkCopySystemProxySettings(void) {
+    if (!IMMasterOff() && IMBypassVPNCheck()) {
+        return NULL;
+    }
+    return sOrigCFNetworkCopySystemProxySettings ? sOrigCFNetworkCopySystemProxySettings() : NULL;
+}
+
+typedef int (*IMGetifaddrsFn)(struct ifaddrs **ifap);
+static IMGetifaddrsFn sOrigGetifaddrs;
+
+static int IMHookGetifaddrs(struct ifaddrs **ifap) {
+    int ret = sOrigGetifaddrs ? sOrigGetifaddrs(ifap) : -1;
+    if (ret == 0 && ifap && *ifap && !IMMasterOff() && IMBypassVPNCheck()) {
+        struct ifaddrs *prev = NULL;
+        struct ifaddrs *curr = *ifap;
+        while (curr) {
+            const char *name = curr->ifa_name;
+            BOOL isVpn = NO;
+            if (name) {
+                if (strncasecmp(name, "utun", 4) == 0 ||
+                    strncasecmp(name, "tun", 3) == 0 ||
+                    strncasecmp(name, "ppp", 3) == 0 ||
+                    strncasecmp(name, "ipsec", 5) == 0 ||
+                    strncasecmp(name, "tap", 3) == 0 ||
+                    strncasecmp(name, "wg", 2) == 0 ||
+                    strcasestr(name, "vpn") != NULL) {
+                    isVpn = YES;
+                }
+            }
+            if (isVpn) {
+                if (prev) {
+                    prev->ifa_next = curr->ifa_next;
+                } else {
+                    *ifap = curr->ifa_next;
+                }
+            } else {
+                prev = curr;
+            }
+            curr = curr->ifa_next;
+        }
+    }
+    return ret;
+}
+
+static NSInteger (*sOrigNEVPNConnectionStatus)(id self, SEL _cmd);
+static NSInteger IMHookNEVPNConnectionStatus(id self, SEL _cmd) {
+    if (!IMMasterOff() && IMBypassVPNCheck()) {
+        return 0; // NEVPNStatusDisconnected
+    }
+    return sOrigNEVPNConnectionStatus ? sOrigNEVPNConnectionStatus(self, _cmd) : 0;
+}
 
 static void IMHookSetCurrentHealth(void *character, int newHealth) {
     if (!character) {
@@ -207,6 +267,24 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookGetCurrentPower, (void **)&sOrigGetCurrentPower);
     MSHookFunction(IMRuntimeAddress(RVA_GetCurrentEnergy),
                    (void *)IMHookGetCurrentEnergy, (void **)&sOrigGetCurrentEnergy);
+
+    // System VPN / Proxy bypass hooks
+    MSHookFunction((void *)CFNetworkCopySystemProxySettings,
+                   (void *)IMHookCFNetworkCopySystemProxySettings,
+                   (void **)&sOrigCFNetworkCopySystemProxySettings);
+
+    MSHookFunction((void *)getifaddrs,
+                   (void *)IMHookGetifaddrs,
+                   (void **)&sOrigGetifaddrs);
+
+    Class neClass = NSClassFromString(@"NEVPNConnection");
+    if (neClass) {
+        Method m = class_getInstanceMethod(neClass, @selector(status));
+        if (m) {
+            sOrigNEVPNConnectionStatus = (NSInteger (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)IMHookNEVPNConnectionStatus);
+        }
+    }
 
     sInstalled = (sOrigSetCurrentHealth != NULL && sOrigShowDamageMessage != NULL);
 

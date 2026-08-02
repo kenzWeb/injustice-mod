@@ -51,6 +51,9 @@ void IMSetFreezeAI(BOOL on);
 BOOL IMBypassRequirements(void);
 void IMSetBypassRequirements(BOOL on);
 
+BOOL IMBypassVPNCheck(void);
+void IMSetBypassVPNCheck(BOOL on);
+
 void IMRequestHeal(void);
 BOOL IMConsumeHealRequest(void);
 
@@ -64,6 +67,7 @@ typedef struct {
     BOOL      infiniteEnergy;
     BOOL      freezeAI;
     BOOL      fixedDamageEnabled;
+    BOOL      bypassVPNCheck;
     long long fixedDamage;
     double    damageMultiplier;
     double    defenseMultiplier;
