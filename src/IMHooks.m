@@ -3,6 +3,7 @@
 #import "IMSettings.h"
 #import "IMDamage.h"
 #import "Offsets.h"
+#import "IMLog.h"
 #import <substrate.h>
 #import <QuartzCore/QuartzCore.h>
 #import <stdint.h>
@@ -324,7 +325,9 @@ static float IMHookGetHealthPercentage(void *character) {
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;
         IMTraceBump(IMTraceKill);
+        IMLog("kill  victim=%p causer=%p hp=%d/%d", character, causer, current, maximum);
         sKillCharacter(causer, character, causer);
+        IMLog("kill  done");
         sInAutoFinish = NO;
     }
 
@@ -371,6 +374,7 @@ static void IMHookSummaryWindowShown(void *window) {
 
     sSummaryWindowSeenMs = IMNowMillis();
     sSummaryWindow = window;
+    IMLog("summary shown window=%p gen=%d", window, sNavGeneration);
     sSummaryBattleValid = NO;
 
     void *data = *(void **)((uintptr_t)window + OFF_SummaryWindowData);
@@ -392,6 +396,7 @@ static void IMHookPreFightOpponentView(void *menu) {
     sPreFightMenu = menu;
     sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
+    IMLog("prefight view menu=%p gen=%d armed=%d", menu, sNavGeneration, sPreFightPressArmed);
 
     if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
     if (!sPreFightPressArmed) return;
@@ -408,13 +413,16 @@ static void IMHookPreFightOpponentView(void *menu) {
         IMTraceBump(IMTraceFightStarted);
         sPreFightPressArmed = NO;
         IMNoteFightStarted();
+        IMLog("startfight menu=%p gen=%d", current, generation);
         sPreFightStartFight(current);
+        IMLog("startfight done");
     });
 }
 
 static IMPreFightFn sOrigPreFightStartFight;
 
 static void IMHookPreFightStartFight(void *menu) {
+    IMLog("game startfight menu=%p", menu);
     sNavGeneration++;
     sPreFightPressArmed = NO;
     sLastPlayerCharacter = NULL;
@@ -469,7 +477,10 @@ static void IMScheduleSummaryClick(int tick, int generation) {
             void *button = *(void **)((uintptr_t)window + OFF_SummaryFightButton);
             if (button) {
                 IMTraceBump(IMTraceSummaryPressed);
+                IMLog("summary click window=%p button=%p tick=%d gen=%d",
+                      window, button, tick, generation);
                 sSimulateClick(button);
+                IMLog("summary click done");
                 return;
             }
         }
@@ -481,6 +492,7 @@ static void IMScheduleSummaryClick(int tick, int generation) {
 
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
+    IMLog("results shown popup=%p", popup);
     IMNoteFightEnded();
     sLastPlayerCharacter = NULL;
     sPreFightPressArmed = YES;
@@ -494,7 +506,9 @@ static void IMHookResultsTransitionIn(void *popup) {
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
         if (resultsGeneration != sNavGeneration) return;
+        IMLog("results continue popup=%p", target);
         sResultsOnContinue(target);
+        IMLog("results continue done");
     });
 }
 

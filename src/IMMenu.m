@@ -4,6 +4,7 @@
 #import "IMSettings.h"
 #import "IMPresets.h"
 #import "IMTheme.h"
+#import "IMLog.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -237,6 +238,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addSwitchRow:@"Master OFF"
                    target:self action:@selector(onMasterOff:) accent:YES];
     [builder addCaption:@"Master OFF — полностью ванильное поведение"];
+    [builder addCaption:IMLogPath()];
 
     [self.fixedRow setActive:NO];
     [self refreshPresetButtons];

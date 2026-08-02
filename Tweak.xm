@@ -3,10 +3,12 @@
 #import "src/IMRuntime.h"
 #import "src/IMSettings.h"
 #import "src/IMHooks.h"
+#import "src/IMLog.h"
 #import "src/IMMenu.h"
 
 %ctor {
     @autoreleasepool {
+        IMLogInit();
         IMSettingsInit();
 
         if (!IMRuntimeResolveImage()) {
