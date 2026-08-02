@@ -335,18 +335,49 @@ static IMCurrentBattleIdFn     sCurrentBattleId;
 static IMPreFightFn            sOrigOpponentView;
 static IMPreFightFn            sPreFightStartFight;
 
+static void * volatile sCampaignMenu;
+static int32_t volatile sCampaignChapter;
+static IMPreFightFn sOrigSummaryShown;
+
 static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) {
     sOrigChapterInit(menu, chapterIndex, battle);
 
-    if (!menu || IMMasterOff() || !sGoToFightInCurrentTab) return;
+    if (!menu) return;
+    sCampaignMenu = menu;
+    sCampaignChapter = chapterIndex;
+
+    if (IMMasterOff() || !sGoToFightInCurrentTab) return;
     if (!IMAutoCampaignMayStartBattle()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
         IMFName target = sCurrentBattleId ? sCurrentBattleId(menu) : battle;
-        if (sStartCampaignBattle) sStartCampaignBattle(menu, target);
         sGoToFightInCurrentTab(menu, target);
+    });
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(9.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign() || !sOrigChapterInit) return;
+        if (sCampaignMenu != menu) return;
+        if (!IMAutoCampaignMayAdvanceChapter()) return;
+        int32_t next = chapterIndex + 1;
+        if (next > 7) return;
+        sOrigChapterInit(menu, next, battle);
+    });
+}
+
+static void IMHookSummaryWindowShown(void *window) {
+    sOrigSummaryShown(window);
+
+    void *menu = sCampaignMenu;
+    if (IMMasterOff() || !menu || !sStartCampaignBattle || !sCurrentBattleId) return;
+    if (!IMAutoCampaignMayPressSummary()) return;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        sStartCampaignBattle(menu, sCurrentBattleId(menu));
     });
 }
 
@@ -460,6 +491,9 @@ BOOL IMHooksInstall(void) {
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignGoToFight);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),
                    (void *)IMHookChapterInit, (void **)&sOrigChapterInit);
+
+    MSHookFunction(IMRuntimeAddress(RVA_SummaryWindowShown),
+                   (void *)IMHookSummaryWindowShown, (void **)&sOrigSummaryShown);
 
     sPreFightStartFight = (IMPreFightFn)IMRuntimeAddress(RVA_PreFightStartFight);
     MSHookFunction(IMRuntimeAddress(RVA_PreFightOpponentView),

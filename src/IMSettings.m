@@ -19,6 +19,8 @@ static atomic_llong sCombatStartMs;
 static atomic_llong sAutoCampaignDelayMs;
 static atomic_llong sLastAutoStartMs;
 static atomic_llong sLastAutoFightMs;
+static atomic_llong sLastAutoSummaryMs;
+static atomic_llong sLastChapterAdvanceMs;
 static atomic_bool sBypassVPNCheck;
 static atomic_llong sAutoWinDeadlineMs;
 
@@ -106,6 +108,8 @@ void IMSetAutoCampaign(BOOL on) {
         atomic_store(&sCombatStartMs, 0);
         atomic_store(&sLastAutoStartMs, 0);
         atomic_store(&sLastAutoFightMs, 0);
+        atomic_store(&sLastAutoSummaryMs, 0);
+        atomic_store(&sLastChapterAdvanceMs, 0);
     }
 }
 
@@ -124,6 +128,24 @@ BOOL IMAutoCampaignShouldFinish(void) {
     long long started = atomic_load(&sCombatStartMs);
     if (started <= 0) return NO;
     return (IMNowMs() - started) >= atomic_load(&sAutoCampaignDelayMs);
+}
+
+BOOL IMAutoCampaignMayPressSummary(void) {
+    if (!atomic_load(&sAutoCampaign)) return NO;
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastAutoSummaryMs);
+    if (last > 0 && now - last < 4000LL) return NO;
+    atomic_store(&sLastAutoSummaryMs, now);
+    return YES;
+}
+
+BOOL IMAutoCampaignMayAdvanceChapter(void) {
+    if (!atomic_load(&sAutoCampaign)) return NO;
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastChapterAdvanceMs);
+    if (last > 0 && now - last < 20000LL) return NO;
+    atomic_store(&sLastChapterAdvanceMs, now);
+    return YES;
 }
 
 BOOL IMAutoCampaignMayPressFight(void) {

@@ -56,6 +56,8 @@ void IMSetAutoCampaign(BOOL on);
 BOOL IMAutoCampaignShouldFinish(void);
 BOOL IMAutoCampaignMayStartBattle(void);
 BOOL IMAutoCampaignMayPressFight(void);
+BOOL IMAutoCampaignMayPressSummary(void);
+BOOL IMAutoCampaignMayAdvanceChapter(void);
 
 double IMAutoCampaignDelay(void);
 void IMSetAutoCampaignDelay(double seconds);
