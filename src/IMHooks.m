@@ -285,6 +285,22 @@ void IMForceRequirementsMet(void *outArray) {
 typedef void (*IMFightClickedFn)(void *menu, bool ignoreArtifactCharges);
 static IMFightClickedFn sOrigFightButtonClicked;
 
+typedef void (*IMResultsPopupFn)(void *popup);
+static IMResultsPopupFn sOrigResultsTransitionIn;
+static IMResultsPopupFn sResultsOnContinue;
+
+static void IMHookResultsTransitionIn(void *popup) {
+    sOrigResultsTransitionIn(popup);
+    if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
+
+    __block void *target = popup;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        sResultsOnContinue(target);
+    });
+}
+
 typedef bool (*IMTeamMeetsFn)(void *requirementData, void *team, void *context, long flags);
 static IMTeamMeetsFn sOrigTeamMeetsRequirements;
 
@@ -353,6 +369,10 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookHasEnoughEnergy, (void **)&sOrigHasEnoughEnergy);
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughResource),
                    (void *)IMHookHasEnoughResource, (void **)&sOrigHasEnoughResource);
+    sResultsOnContinue = (IMResultsPopupFn)IMRuntimeAddress(RVA_ResultsOnContinue);
+    MSHookFunction(IMRuntimeAddress(RVA_ResultsTransitionIn),
+                   (void *)IMHookResultsTransitionIn,
+                   (void **)&sOrigResultsTransitionIn);
     MSHookFunction(IMRuntimeAddress(RVA_TeamMeetsRequirements),
                    (void *)IMHookTeamMeetsRequirements,
                    (void **)&sOrigTeamMeetsRequirements);

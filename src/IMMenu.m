@@ -28,6 +28,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) IMValueRow        *damageRow;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
 @property (nonatomic, strong) IMValueRow        *fixedRow;
+@property (nonatomic, strong) IMValueRow        *campaignRow;
 @property (nonatomic, strong) NSTimer           *ticker;
 @property (nonatomic, weak)   UIWindow          *previousKeyWindow;
 @property (nonatomic, assign) CGFloat            contentHeight;
@@ -186,6 +187,18 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     self.energySwitch = [builder addSwitchRow:@"Бесконечная энергия"
                                        target:self action:@selector(onInfiniteEnergy:) accent:NO];
     [builder addCaption:@"супер всегда доступен, без ожидания между приёмами"];
+    [builder addSeparator];
+
+    [builder addSwitchRow:@"Авто-прохождение кампании"
+                   target:self action:@selector(onAutoCampaign:) accent:YES];
+    self.campaignRow = [builder addValueRow:@"Длительность боя, сек"
+                                     target:self
+                                fieldAction:@selector(onCampaignDelayField:)
+                               sliderAction:@selector(onCampaignDelaySlider:)
+                                      value:IMAutoCampaignDelay()
+                                   maxValue:15.0
+                                   decimals:YES];
+    [builder addCaption:@"бой сам завершается победой, экран наград закрывается"];
     [builder addSeparator];
 
     [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
@@ -349,6 +362,20 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onInfiniteEnergy:(UISwitch *)sender { IMSetInfiniteEnergy(sender.isOn); }
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
 - (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
+- (void)onAutoCampaign:(UISwitch *)sender { IMSetAutoCampaign(sender.isOn); }
+
+- (void)applyCampaignDelay:(double)value {
+    IMSetAutoCampaignDelay(value);
+    double applied = IMAutoCampaignDelay();
+    self.campaignRow.field.text = [NSString stringWithFormat:@"%.2f", applied];
+    self.campaignRow.slider.value =
+        (float)MIN(applied, (double)self.campaignRow.slider.maximumValue);
+}
+
+- (void)onCampaignDelaySlider:(UISlider *)sender { [self applyCampaignDelay:sender.value]; }
+- (void)onCampaignDelayField:(UITextField *)sender {
+    [self applyCampaignDelay:[self parseField:sender]];
+}
 - (void)onBypassVPNCheck:(UISwitch *)sender { IMSetBypassVPNCheck(sender.isOn); }
 
 - (void)onCopyTapjoyURL {

@@ -14,6 +14,9 @@ static atomic_bool sHealRequested;
 static atomic_bool sInfiniteEnergy;
 static atomic_bool sFreezeAI;
 static atomic_bool sBypassRequirements;
+static atomic_bool sAutoCampaign;
+static atomic_llong sCombatStartMs;
+static atomic_llong sAutoCampaignDelayMs;
 static atomic_bool sBypassVPNCheck;
 static atomic_llong sAutoWinDeadlineMs;
 
@@ -39,6 +42,7 @@ void IMSettingsInit(void) {
     atomic_store(&sDamageMultiplierScaled, kScale);
     atomic_store(&sDefenseMultiplierScaled, kScale);
     atomic_store(&sFixedDamage, 1000LL);
+    atomic_store(&sAutoCampaignDelayMs, 1500LL);
     atomic_store(&sBypassVPNCheck, true);
 }
 
@@ -92,6 +96,36 @@ void IMSetFreezeAI(BOOL on) { atomic_store(&sFreezeAI, on); }
 BOOL IMBypassRequirements(void) { return atomic_load(&sBypassRequirements); }
 void IMSetBypassRequirements(BOOL on) { atomic_store(&sBypassRequirements, on); }
 
+BOOL IMAutoCampaign(void) { return atomic_load(&sAutoCampaign); }
+
+void IMSetAutoCampaign(BOOL on) {
+    atomic_store(&sAutoCampaign, on);
+    if (!on) atomic_store(&sCombatStartMs, 0);
+}
+
+double IMAutoCampaignDelay(void) {
+    return (double)atomic_load(&sAutoCampaignDelayMs) / 1000.0;
+}
+
+void IMSetAutoCampaignDelay(double seconds) {
+    if (seconds < 0.0) seconds = 0.0;
+    if (seconds > 30.0) seconds = 30.0;
+    atomic_store(&sAutoCampaignDelayMs, (long long)llround(seconds * 1000.0));
+}
+
+BOOL IMAutoCampaignShouldFinish(void) {
+    if (!atomic_load(&sAutoCampaign)) return NO;
+    long long started = atomic_load(&sCombatStartMs);
+    if (started <= 0) return NO;
+    return (IMNowMs() - started) >= atomic_load(&sAutoCampaignDelayMs);
+}
+
+static void IMNoteCombatTick(void) {
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastSeenMs);
+    if (last <= 0 || now - last > kStaleMs) atomic_store(&sCombatStartMs, now);
+}
+
 BOOL IMBypassVPNCheck(void) { return atomic_load(&sBypassVPNCheck); }
 void IMSetBypassVPNCheck(BOOL on) { atomic_store(&sBypassVPNCheck, on); }
 
@@ -135,12 +169,14 @@ BOOL IMAutoWinActive(void) {
 }
 
 void IMPublishPlayerHealth(int hp, int max) {
+    IMNoteCombatTick();
     atomic_store(&sPlayerHP, hp);
     atomic_store(&sPlayerMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());
 }
 
 void IMPublishEnemyHealth(int hp, int max) {
+    IMNoteCombatTick();
     atomic_store(&sEnemyHP, hp);
     atomic_store(&sEnemyMax, max);
     atomic_store(&sLastSeenMs, IMNowMs());

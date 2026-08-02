@@ -51,6 +51,13 @@ void IMSetFreezeAI(BOOL on);
 BOOL IMBypassRequirements(void);
 void IMSetBypassRequirements(BOOL on);
 
+BOOL IMAutoCampaign(void);
+void IMSetAutoCampaign(BOOL on);
+BOOL IMAutoCampaignShouldFinish(void);
+
+double IMAutoCampaignDelay(void);
+void IMSetAutoCampaignDelay(double seconds);
+
 BOOL IMBypassVPNCheck(void);
 void IMSetBypassVPNCheck(BOOL on);
 
