@@ -22,11 +22,11 @@ void IMLogInit(void) {
     sLogPath = [dir stringByAppendingPathComponent:@"immod.log"];
     sStart = CACurrentMediaTime();
 
-    sLogFile = fopen(sLogPath.UTF8String, "w");
+    sLogFile = fopen(sLogPath.UTF8String, "a");
     if (!sLogFile) return;
 
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
-    fprintf(sLogFile, "=== InjusticeMod log ===\n");
+    fprintf(sLogFile, "\n=== session start ===\n");
     fprintf(sLogFile, "build %s (%s)\n",
             [info[@"CFBundleShortVersionString"] UTF8String] ?: "?",
             [info[@"CFBundleVersion"] UTF8String] ?: "?");

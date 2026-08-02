@@ -299,6 +299,40 @@ static IMHealthPercentFn  sOrigGetHealthPercentage;
 static IMKillCharacterFn  sKillCharacter;
 static void * volatile    sLastPlayerCharacter;
 static long long volatile sLastPlayerSeenMs;
+
+#define IM_KILL_SLOTS 8
+static struct { void *target; long long ms; } sRecentKills[IM_KILL_SLOTS];
+
+static BOOL IMKillCooldownPassed(void *target) {
+    long long now = IMNowMillis();
+    for (int i = 0; i < IM_KILL_SLOTS; i++) {
+        if (sRecentKills[i].target == target) {
+            return (now - sRecentKills[i].ms) > 1500;
+        }
+    }
+    return YES;
+}
+
+static void IMNoteKill(void *target) {
+    long long now = IMNowMillis();
+    int oldest = 0;
+    for (int i = 0; i < IM_KILL_SLOTS; i++) {
+        if (sRecentKills[i].target == target) {
+            sRecentKills[i].ms = now;
+            return;
+        }
+        if (sRecentKills[i].ms < sRecentKills[oldest].ms) oldest = i;
+    }
+    sRecentKills[oldest].target = target;
+    sRecentKills[oldest].ms = now;
+}
+
+static void IMResetKillHistory(void) {
+    for (int i = 0; i < IM_KILL_SLOTS; i++) {
+        sRecentKills[i].target = NULL;
+        sRecentKills[i].ms = 0;
+    }
+}
 static _Thread_local BOOL sInAutoFinish;
 
 static float IMHookGetHealthPercentage(void *character) {
@@ -322,10 +356,12 @@ static float IMHookGetHealthPercentage(void *character) {
     if (causer && IMNowMillis() - sLastPlayerSeenMs > 200) causer = NULL;
     if (!IMMasterOff() && sKillCharacter && causer && !isPlayer &&
         maximum > 0 && current > 0 &&
+        IMKillCooldownPassed(character) &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;
         IMTraceBump(IMTraceKill);
         IMLog("kill  victim=%p causer=%p hp=%d/%d", character, causer, current, maximum);
+        IMNoteKill(character);
         sKillCharacter(causer, character, causer);
         IMLog("kill  done");
         sInAutoFinish = NO;
@@ -427,6 +463,7 @@ static void IMHookPreFightStartFight(void *menu) {
     sPreFightPressArmed = NO;
     sLastPlayerCharacter = NULL;
     sSummaryWindow = NULL;
+    IMResetKillHistory();
     IMNoteFightStarted();
     sOrigPreFightStartFight(menu);
 }
