@@ -311,12 +311,7 @@ static float IMHookGetHealthPercentage(void *character) {
     }
 
     void *causer = sLastPlayerCharacter;
-    void *activeEnemy = causer
-        ? *(void **)((uintptr_t)causer + OFF_CurrentEnemy)
-        : NULL;
-
     if (!IMMasterOff() && sKillCharacter && causer && !isPlayer &&
-        character == activeEnemy &&
         maximum > 0 && current > 0 &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;
@@ -358,14 +353,14 @@ static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) 
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || !IMAutoNavigate()) return;
         IMFName target = sCurrentBattleId ? sCurrentBattleId(menu) : battle;
         sGoToFightInCurrentTab(menu, target);
     });
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(9.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign() || !sOrigChapterInit) return;
+        if (IMMasterOff() || !IMAutoNavigate() || !sOrigChapterInit) return;
         if (sCampaignMenu != menu) return;
         if (!IMAutoCampaignMayAdvanceChapter()) return;
         int32_t next = chapterIndex + 1;
@@ -385,7 +380,7 @@ static void IMHookSummaryWindowShown(void *window) {
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || !IMAutoNavigate()) return;
         IMTraceBump(IMTraceSummaryPressed);
         sStartCampaignBattle(menu, sCurrentBattleId(menu));
     });
@@ -401,7 +396,7 @@ static void IMHookPreFightOpponentView(void *menu) {
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || !IMAutoNavigate()) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);

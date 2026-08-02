@@ -25,6 +25,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) UISwitch          *freezeAISwitch;
 @property (nonatomic, strong) UISwitch          *fixedSwitch;
 @property (nonatomic, strong) UISwitch          *vpnSwitch;
+@property (nonatomic, strong) UISwitch          *navigateSwitch;
 @property (nonatomic, strong) NSArray<UIButton *> *loadButtons;
 @property (nonatomic, strong) IMValueRow        *damageRow;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
@@ -200,6 +201,10 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
                                    maxValue:15.0
                                    decimals:YES];
     [builder addCaption:@"бой сам завершается победой, экран наград закрывается"];
+    [builder addSeparator];
+    self.navigateSwitch = [builder addSwitchRow:@"Авто-переходы по меню"
+                                         target:self action:@selector(onAutoNavigate:) accent:YES];
+    [builder addCaption:@"экспериментально: сам жмёт В БОЙ и меняет главу"];
     UIView *traceRow = [builder addCustomRowOfHeight:34];
     self.trace = [[UILabel alloc] initWithFrame:
         CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
@@ -373,6 +378,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onFreezeAI:(UISwitch *)sender   { IMSetFreezeAI(sender.isOn); }
 - (void)onBypassRequirements:(UISwitch *)sender { IMSetBypassRequirements(sender.isOn); }
 - (void)onAutoCampaign:(UISwitch *)sender { IMSetAutoCampaign(sender.isOn); }
+- (void)onAutoNavigate:(UISwitch *)sender { IMSetAutoNavigate(sender.isOn); }
 
 - (void)applyCampaignDelay:(double)value {
     IMSetAutoCampaignDelay(value);

@@ -15,6 +15,7 @@ static atomic_bool sInfiniteEnergy;
 static atomic_bool sFreezeAI;
 static atomic_bool sBypassRequirements;
 static atomic_bool sAutoCampaign;
+static atomic_bool sAutoNavigate;
 static atomic_llong sCombatStartMs;
 static atomic_llong sAutoCampaignDelayMs;
 static atomic_llong sLastAutoStartMs;
@@ -102,6 +103,9 @@ void IMSetBypassRequirements(BOOL on) { atomic_store(&sBypassRequirements, on); 
 
 BOOL IMAutoCampaign(void) { return atomic_load(&sAutoCampaign); }
 
+BOOL IMAutoNavigate(void) { return atomic_load(&sAutoNavigate); }
+void IMSetAutoNavigate(BOOL on) { atomic_store(&sAutoNavigate, on); }
+
 void IMSetAutoCampaign(BOOL on) {
     atomic_store(&sAutoCampaign, on);
     if (!on) {
@@ -131,7 +135,7 @@ BOOL IMAutoCampaignShouldFinish(void) {
 }
 
 BOOL IMAutoCampaignMayPressSummary(void) {
-    if (!atomic_load(&sAutoCampaign)) return NO;
+    if (!atomic_load(&sAutoNavigate)) return NO;
     long long now = IMNowMs();
     long long last = atomic_load(&sLastAutoSummaryMs);
     if (last > 0 && now - last < 4000LL) return NO;
@@ -140,7 +144,7 @@ BOOL IMAutoCampaignMayPressSummary(void) {
 }
 
 BOOL IMAutoCampaignMayAdvanceChapter(void) {
-    if (!atomic_load(&sAutoCampaign)) return NO;
+    if (!atomic_load(&sAutoNavigate)) return NO;
     long long now = IMNowMs();
     long long last = atomic_load(&sLastChapterAdvanceMs);
     if (last > 0 && now - last < 20000LL) return NO;
@@ -149,7 +153,7 @@ BOOL IMAutoCampaignMayAdvanceChapter(void) {
 }
 
 BOOL IMAutoCampaignMayPressFight(void) {
-    if (!atomic_load(&sAutoCampaign)) return NO;
+    if (!atomic_load(&sAutoNavigate)) return NO;
     long long now = IMNowMs();
     long long last = atomic_load(&sLastAutoFightMs);
     if (last > 0 && now - last < 4000LL) return NO;
@@ -158,7 +162,7 @@ BOOL IMAutoCampaignMayPressFight(void) {
 }
 
 BOOL IMAutoCampaignMayStartBattle(void) {
-    if (!atomic_load(&sAutoCampaign)) return NO;
+    if (!atomic_load(&sAutoNavigate)) return NO;
     long long now = IMNowMs();
     long long last = atomic_load(&sLastAutoStartMs);
     if (last > 0 && now - last < 4000LL) return NO;
