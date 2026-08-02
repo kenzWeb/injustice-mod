@@ -1,6 +1,6 @@
 Package: com.local.injusticemod
 Name: Injustice2 Mod Menu
-Version: 1.8.3
+Version: 1.8.4
 Architecture: iphoneos-arm64e
 Description: Floating debug/mod menu for Injustice 2 Mobile 6.7.1 (build 1438123).
  Hooks ACombatCharacter::SetCurrentHealth and shows live HP for the player and

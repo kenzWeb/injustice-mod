@@ -311,7 +311,12 @@ static float IMHookGetHealthPercentage(void *character) {
     }
 
     void *causer = sLastPlayerCharacter;
+    void *activeEnemy = causer
+        ? *(void **)((uintptr_t)causer + OFF_CurrentEnemy)
+        : NULL;
+
     if (!IMMasterOff() && sKillCharacter && causer && !isPlayer &&
+        character == activeEnemy &&
         maximum > 0 && current > 0 &&
         (IMAutoWinActive() || IMAutoCampaignShouldFinish())) {
         sInAutoFinish = YES;

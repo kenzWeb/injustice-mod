@@ -36,6 +36,7 @@
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
 
+#define OFF_CurrentEnemy            0x500
 #define OFF_CurrentHealth           0x4E4
 #define OFF_MaxHealth               0x4E8
 #define OFF_CharacterTeam           0x118C
