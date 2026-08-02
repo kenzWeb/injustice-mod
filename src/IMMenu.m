@@ -203,7 +203,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     UIView *traceRow = [builder addCustomRowOfHeight:34];
     self.trace = [[UILabel alloc] initWithFrame:
         CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
-    self.trace.numberOfLines = 2;
+    self.trace.numberOfLines = 1;
     self.trace.font = [UIFont monospacedDigitSystemFontOfSize:10
                                                        weight:UIFontWeightRegular];
     self.trace.textColor = IMColorDim();
@@ -547,8 +547,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     }
 
     self.trace.text = [NSString stringWithFormat:
-        @"map%d sum%d press%d
-pre%d fight%d kill%d",
+        @"map%d sum%d press%d   pre%d fight%d kill%d",
         IMTraceValue(IMTraceChapterInit), IMTraceValue(IMTraceSummaryShown),
         IMTraceValue(IMTraceSummaryPressed), IMTraceValue(IMTracePreFightView),
         IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill)];
