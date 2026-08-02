@@ -54,8 +54,6 @@ void IMSetBypassRequirements(BOOL on);
 BOOL IMAutoCampaign(void);
 void IMSetAutoCampaign(BOOL on);
 
-BOOL IMAutoNavigate(void);
-void IMSetAutoNavigate(BOOL on);
 BOOL IMAutoCampaignShouldFinish(void);
 BOOL IMAutoCampaignMayStartBattle(void);
 BOOL IMAutoCampaignMayPressFight(void);

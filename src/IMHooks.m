@@ -4,6 +4,7 @@
 #import "IMDamage.h"
 #import "Offsets.h"
 #import <substrate.h>
+#import <QuartzCore/QuartzCore.h>
 #import <stdint.h>
 #import <ifaddrs.h>
 #import <net/if.h>
@@ -336,71 +337,37 @@ static IMCurrentBattleIdFn     sCurrentBattleId;
 static IMPreFightFn            sOrigOpponentView;
 static IMPreFightFn            sPreFightStartFight;
 
+static long long IMNowMillis(void) {
+    return (long long)(CACurrentMediaTime() * 1000.0);
+}
+
 static void * volatile sCampaignMenu;
+static void * volatile sPreFightMenu;
+static long long volatile sSummaryWindowSeenMs;
+static long long volatile sPreFightSeenMs;
 static int32_t volatile sCampaignChapter;
 static IMPreFightFn sOrigSummaryShown;
 
 static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) {
     sOrigChapterInit(menu, chapterIndex, battle);
-
     if (!menu) return;
     sCampaignMenu = menu;
     sCampaignChapter = chapterIndex;
     IMTraceBump(IMTraceChapterInit);
-
-    if (IMMasterOff() || !sGoToFightInCurrentTab) return;
-    if (!IMAutoCampaignMayStartBattle()) return;
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoNavigate()) return;
-        IMFName target = sCurrentBattleId ? sCurrentBattleId(menu) : battle;
-        sGoToFightInCurrentTab(menu, target);
-    });
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(9.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoNavigate() || !sOrigChapterInit) return;
-        if (sCampaignMenu != menu) return;
-        if (!IMAutoCampaignMayAdvanceChapter()) return;
-        int32_t next = chapterIndex + 1;
-        if (next > 7) return;
-        sOrigChapterInit(menu, next, battle);
-    });
 }
 
 static void IMHookSummaryWindowShown(void *window) {
     sOrigSummaryShown(window);
+    sSummaryWindowSeenMs = IMNowMillis();
     IMTraceBump(IMTraceSummaryShown);
-
-    void *menu = sCampaignMenu;
-    if (IMMasterOff() || !menu || !sStartCampaignBattle || !sCurrentBattleId) return;
-    if (IMInCombat()) return;
-    if (!IMAutoCampaignMayPressSummary()) return;
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoNavigate()) return;
-        IMTraceBump(IMTraceSummaryPressed);
-        sStartCampaignBattle(menu, sCurrentBattleId(menu));
-    });
 }
 
 static void IMHookPreFightOpponentView(void *menu) {
     sOrigOpponentView(menu);
+    if (!menu) return;
+    sPreFightMenu = menu;
+    sPreFightSeenMs = IMNowMillis();
     IMTraceBump(IMTracePreFightView);
-
-    if (!menu || IMMasterOff() || !sPreFightStartFight) return;
-    if (IMInCombat() || IMFightStartedRecently()) return;
-    if (!IMAutoCampaignMayPressFight()) return;
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoNavigate()) return;
-        if (IMInCombat() || IMFightStartedRecently()) return;
-        IMTraceBump(IMTraceFightStarted);
-        sPreFightStartFight(menu);
-    });
 }
 
 static IMPreFightFn sOrigPreFightStartFight;
@@ -424,6 +391,32 @@ typedef void (*IMResultsPopupFn)(void *popup);
 static IMResultsPopupFn sOrigResultsTransitionIn;
 static IMResultsPopupFn sResultsOnContinue;
 
+
+static void IMNavigateStep(int step) {
+    if (step > 3 || IMMasterOff() || !IMAutoCampaign()) return;
+    if (IMInCombat() || IMFightStartedRecently()) return;
+
+    long long now = IMNowMillis();
+    void *campaign = sCampaignMenu;
+    void *prefight = sPreFightMenu;
+
+    if (step == 1 && campaign && sGoToFightInCurrentTab && sCurrentBattleId) {
+        sGoToFightInCurrentTab(campaign, sCurrentBattleId(campaign));
+    } else if (step == 2 && campaign && sStartCampaignBattle && sCurrentBattleId &&
+               now - sSummaryWindowSeenMs < 6000) {
+        IMTraceBump(IMTraceSummaryPressed);
+        sStartCampaignBattle(campaign, sCurrentBattleId(campaign));
+    } else if (step == 3 && prefight && sPreFightStartFight &&
+               now - sPreFightSeenMs < 6000) {
+        IMTraceBump(IMTraceFightStarted);
+        sPreFightStartFight(prefight);
+        return;
+    }
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ IMNavigateStep(step + 1); });
+}
+
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMNoteFightEnded();
@@ -434,6 +427,8 @@ static void IMHookResultsTransitionIn(void *popup) {
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
         sResultsOnContinue(target);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ IMNavigateStep(1); });
     });
 }
 
