@@ -166,6 +166,18 @@ BOOL IMAutoCampaignMayStartBattle(void) {
     return YES;
 }
 
+static atomic_llong sFightStartedMs;
+
+void IMNoteFightStarted(void) {
+    atomic_store(&sFightStartedMs, IMNowMs());
+}
+
+BOOL IMFightStartedRecently(void) {
+    long long last = atomic_load(&sFightStartedMs);
+    if (last <= 0) return NO;
+    return (IMNowMs() - last) < 15000LL;
+}
+
 BOOL IMInCombat(void) {
     long long last = atomic_load(&sLastSeenMs);
     if (last <= 0) return NO;

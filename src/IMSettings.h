@@ -59,6 +59,8 @@ BOOL IMAutoCampaignMayPressFight(void);
 BOOL IMAutoCampaignMayPressSummary(void);
 BOOL IMAutoCampaignMayAdvanceChapter(void);
 BOOL IMInCombat(void);
+void IMNoteFightStarted(void);
+BOOL IMFightStartedRecently(void);
 
 typedef enum {
     IMTraceChapterInit = 0,

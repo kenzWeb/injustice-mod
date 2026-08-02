@@ -396,15 +396,23 @@ static void IMHookPreFightOpponentView(void *menu) {
     IMTraceBump(IMTracePreFightView);
 
     if (!menu || IMMasterOff() || !sPreFightStartFight) return;
-    if (IMInCombat()) return;
+    if (IMInCombat() || IMFightStartedRecently()) return;
     if (!IMAutoCampaignMayPressFight()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign() || IMInCombat()) return;
+        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMInCombat() || IMFightStartedRecently()) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);
     });
+}
+
+static IMPreFightFn sOrigPreFightStartFight;
+
+static void IMHookPreFightStartFight(void *menu) {
+    IMNoteFightStarted();
+    sOrigPreFightStartFight(menu);
 }
 
 static IMCurrentBattleIdFn sOrigCurrentBattleId;
@@ -519,7 +527,10 @@ BOOL IMHooksInstall(void) {
     MSHookFunction(IMRuntimeAddress(RVA_SummaryWindowShown),
                    (void *)IMHookSummaryWindowShown, (void **)&sOrigSummaryShown);
 
-    sPreFightStartFight = (IMPreFightFn)IMRuntimeAddress(RVA_PreFightStartFight);
+    MSHookFunction(IMRuntimeAddress(RVA_PreFightStartFight),
+                   (void *)IMHookPreFightStartFight,
+                   (void **)&sOrigPreFightStartFight);
+    sPreFightStartFight = sOrigPreFightStartFight;
     MSHookFunction(IMRuntimeAddress(RVA_PreFightOpponentView),
                    (void *)IMHookPreFightOpponentView, (void **)&sOrigOpponentView);
 
