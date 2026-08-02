@@ -375,6 +375,7 @@ static void IMHookSummaryWindowShown(void *window) {
 
     void *menu = sCampaignMenu;
     if (IMMasterOff() || !menu || !sStartCampaignBattle || !sCurrentBattleId) return;
+    if (IMInCombat()) return;
     if (!IMAutoCampaignMayPressSummary()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
@@ -390,14 +391,25 @@ static void IMHookPreFightOpponentView(void *menu) {
     IMTraceBump(IMTracePreFightView);
 
     if (!menu || IMMasterOff() || !sPreFightStartFight) return;
+    if (IMInCombat()) return;
     if (!IMAutoCampaignMayPressFight()) return;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || !IMAutoCampaign() || IMInCombat()) return;
         IMTraceBump(IMTraceFightStarted);
         sPreFightStartFight(menu);
     });
+}
+
+static IMCurrentBattleIdFn sOrigCurrentBattleId;
+
+static IMFName IMHookCurrentBattleId(void *menu) {
+    if (menu) {
+        sCampaignMenu = menu;
+        IMTraceBump(IMTraceChapterInit);
+    }
+    return sOrigCurrentBattleId(menu);
 }
 
 typedef void (*IMResultsPopupFn)(void *popup);
@@ -491,8 +503,9 @@ BOOL IMHooksInstall(void) {
 
     sStartCampaignBattle =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
-    sCurrentBattleId =
-        (IMCurrentBattleIdFn)IMRuntimeAddress(RVA_CampaignCurrentBattleId);
+    MSHookFunction(IMRuntimeAddress(RVA_CampaignCurrentBattleId),
+                   (void *)IMHookCurrentBattleId, (void **)&sOrigCurrentBattleId);
+    sCurrentBattleId = sOrigCurrentBattleId;
     sGoToFightInCurrentTab =
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignGoToFight);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),

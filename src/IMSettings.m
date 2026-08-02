@@ -166,6 +166,12 @@ BOOL IMAutoCampaignMayStartBattle(void) {
     return YES;
 }
 
+BOOL IMInCombat(void) {
+    long long last = atomic_load(&sLastSeenMs);
+    if (last <= 0) return NO;
+    return (IMNowMs() - last) < 1500LL;
+}
+
 static atomic_int sTrace[IMTraceCount];
 
 void IMTraceBump(IMTraceEvent event) {
