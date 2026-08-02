@@ -22,6 +22,7 @@
 #define RVA_KillCharacter           0x1B41710
 #define RVA_CampaignChapterInit     0x1D46D88
 #define RVA_CampaignCurrentBattleId 0x1D476E8
+#define RVA_CampaignGoToFight       0x1D471A4
 #define RVA_PreFightOpponentView    0x1F48668
 #define RVA_PreFightStartFight      0x1F49A94
 #define RVA_CampaignStartBattle     0x1D479B0

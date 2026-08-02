@@ -330,6 +330,7 @@ typedef void (*IMPreFightFn)(void *menu);
 
 static IMChapterInitFn         sOrigChapterInit;
 static IMStartCampaignBattleFn sStartCampaignBattle;
+static IMStartCampaignBattleFn sGoToFightInCurrentTab;
 static IMCurrentBattleIdFn     sCurrentBattleId;
 static IMPreFightFn            sOrigOpponentView;
 static IMPreFightFn            sPreFightStartFight;
@@ -337,14 +338,15 @@ static IMPreFightFn            sPreFightStartFight;
 static void IMHookChapterInit(void *menu, int32_t chapterIndex, IMFName battle) {
     sOrigChapterInit(menu, chapterIndex, battle);
 
-    if (!menu || IMMasterOff() || !sStartCampaignBattle) return;
+    if (!menu || IMMasterOff() || !sGoToFightInCurrentTab) return;
     if (!IMAutoCampaignMayStartBattle()) return;
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.6 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (IMMasterOff() || !IMAutoCampaign()) return;
         IMFName target = sCurrentBattleId ? sCurrentBattleId(menu) : battle;
-        sStartCampaignBattle(menu, target);
+        if (sStartCampaignBattle) sStartCampaignBattle(menu, target);
+        sGoToFightInCurrentTab(menu, target);
     });
 }
 
@@ -454,6 +456,8 @@ BOOL IMHooksInstall(void) {
         (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignStartBattle);
     sCurrentBattleId =
         (IMCurrentBattleIdFn)IMRuntimeAddress(RVA_CampaignCurrentBattleId);
+    sGoToFightInCurrentTab =
+        (IMStartCampaignBattleFn)IMRuntimeAddress(RVA_CampaignGoToFight);
     MSHookFunction(IMRuntimeAddress(RVA_CampaignChapterInit),
                    (void *)IMHookChapterInit, (void **)&sOrigChapterInit);
 
