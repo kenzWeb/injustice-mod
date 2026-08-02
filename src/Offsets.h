@@ -23,6 +23,10 @@
 #define RVA_CampaignChapterInit     0x1D46D88
 #define RVA_CampaignCurrentBattleId 0x1D476E8
 #define RVA_CampaignGoToFight       0x1D471A4
+#define OFF_SummaryWindowData       0x338
+#define OFF_SummaryDataBattleName   0x40
+#define OFF_SummaryDataLocked       0x60
+
 #define RVA_SummaryWindowSetData    0x1D82254
 #define RVA_SummaryWindowShown      0x1D82480
 #define RVA_PreFightOpponentView    0x1F48668
