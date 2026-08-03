@@ -465,6 +465,9 @@ static void IMHookPreFightStartFight(void *menu) {
     sSummaryWindow = NULL;
     IMResetKillHistory();
     IMNoteFightStarted();
+    if (menu && !IMMasterOff() && IMBypassRequirements()) {
+        *(unsigned char *)((uintptr_t)menu + OFF_RequirementsUnmet) = 0;
+    }
     sOrigPreFightStartFight(menu);
 }
 
