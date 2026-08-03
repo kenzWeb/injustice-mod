@@ -558,18 +558,6 @@ static bool IMHookTeamMeetsRequirements(void *requirementData, void *team,
     return sOrigTeamMeetsRequirements(requirementData, team, context, flags);
 }
 
-typedef void (*IMStartChallengeRespFn)(void *response);
-static IMStartChallengeRespFn sOrigStartChallengeResp;
-
-static void IMHookStartChallengeBattleResponse(void *response) {
-    if (response && !IMMasterOff() && IMBypassRequirements()) {
-        *(bool *)((uintptr_t)response + 0x00) = true; // Force bAllowedToStart = true
-    }
-    if (sOrigStartChallengeResp) {
-        sOrigStartChallengeResp(response);
-    }
-}
-
 typedef void (*IMRequirementsResultFn)(void *context, void *resultFlag);
 static IMRequirementsResultFn sOrigRequirementsResult;
 
