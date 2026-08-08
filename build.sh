@@ -1,10 +1,17 @@
 #!/bin/bash
 # Build InjusticeMod into a .deb.
 #
-#   ./build.sh          incremental build
-#   ./build.sh -c       clean build (wipes .theos)
-#   ./build.sh -p       git pull --ff-only first, then build
-#   ./build.sh -p -c    both
+#   ./build.sh              incremental build
+#   ./build.sh -c           clean build (wipes .theos)
+#   ./build.sh -p           git pull --ff-only first, then build
+#   ./build.sh -s rootless  build for a different packaging scheme
+#   ./build.sh --rootless   shorthand for -s rootless
+#
+# Without -s the scheme from the Makefile is used (roothide). Schemes differ
+# only in packaging: roothide installs under the randomised jbroot and labels
+# the deb iphoneos-arm64e, rootless installs under /var/jb and labels it
+# iphoneos-arm64. Each scheme gets its own scratch dir, so switching between
+# them does not force a rebuild.
 #
 # Theos refuses to build from a path containing spaces, and this repo usually
 # lives under ".../injustice 2/". So when the path has a space the sources are
@@ -16,14 +23,32 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DO_CLEAN=0
 DO_PULL=0
-for a in "$@"; do
-    case "$a" in
+SCHEME=""
+while [ $# -gt 0 ]; do
+    case "$1" in
         -c|--clean) DO_CLEAN=1 ;;
         -p|--pull)  DO_PULL=1 ;;
-        -h|--help)  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "unknown option: $a (try -h)" >&2; exit 2 ;;
+        --rootless) SCHEME="rootless" ;;
+        --roothide) SCHEME="roothide" ;;
+        -s|--scheme)
+            shift
+            [ $# -gt 0 ] || { echo "-s needs a scheme name (rootless, roothide, rootful)" >&2; exit 2; }
+            SCHEME="$1" ;;
+        -h|--help)  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "unknown option: $1 (try -h)" >&2; exit 2 ;;
     esac
+    shift
 done
+
+# 'rootful' is the absence of a scheme, not a scheme Theos knows about
+MAKE_ARGS=()
+if [ -n "$SCHEME" ]; then
+    if [ "$SCHEME" = "rootful" ]; then
+        MAKE_ARGS+=("THEOS_PACKAGE_SCHEME=")
+    else
+        MAKE_ARGS+=("THEOS_PACKAGE_SCHEME=$SCHEME")
+    fi
+fi
 
 red()  { printf '\033[1;31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[1;32m%s\033[0m\n' "$*"; }
@@ -83,11 +108,12 @@ if [ "$DO_PULL" -eq 1 ]; then
 fi
 echo "    commit: $(git -C "$REPO" log --oneline -1 2>/dev/null || echo 'not a git repo')"
 echo "    version: $(grep -i '^Version:' "$REPO/control" | cut -d' ' -f2-)"
+echo "    scheme:  ${SCHEME:-$(grep -E '^THEOS_PACKAGE_SCHEME' "$REPO/Makefile" | cut -d= -f2- | tr -d ' ')}"
 
 # ---------------------------------------------------------------- work dir
 case "$REPO" in
     *\ *)
-        WORK="${TMPDIR:-/tmp}/injustice-mod-build"
+        WORK="${TMPDIR:-/tmp}/injustice-mod-build${SCHEME:+-$SCHEME}"
         ylw "==> path has a space; mirroring to $WORK"
         mkdir -p "$WORK"
         # .theos stays behind so incremental builds keep working
@@ -105,13 +131,13 @@ cd "$WORK" || exit 1
 if [ "$DO_CLEAN" -eq 1 ]; then
     ylw "==> clean"
     rm -rf .theos packages
-    make clean >/dev/null 2>&1
+    make clean "${MAKE_ARGS[@]+"${MAKE_ARGS[@]}"}" >/dev/null 2>&1
 fi
 
 LOG="$WORK/build.log"
 ylw "==> make package"
 set -o pipefail
-make package FINALPACKAGE=1 2>&1 | tee "$LOG"
+make package FINALPACKAGE=1 "${MAKE_ARGS[@]+"${MAKE_ARGS[@]}"}" 2>&1 | tee "$LOG"
 STATUS=$?
 set +o pipefail
 
