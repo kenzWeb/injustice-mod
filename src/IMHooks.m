@@ -241,6 +241,18 @@ static void IMHookShowDamageMessage(void *victim,
                            isCrit, isLethal, isTrueDamage);
 }
 
+typedef float (*IMDamageCharacterFn)(void *target, float amount, void *damageEvent, void *causer, void *instigator, bool isCrit, bool isLethal);
+static IMDamageCharacterFn sOrigDamageCharacter;
+
+static float IMHookDamageCharacter(void *target, float amount, void *damageEvent, void *causer, void *instigator, bool isCrit, bool isLethal) {
+    if (!IMMasterOff() && target && !IMIsPlayerCharacter(target)) {
+        if (IMDamageMultiplier() > 1.0) {
+            amount *= (float)IMDamageMultiplier();
+        }
+    }
+    return sOrigDamageCharacter ? sOrigDamageCharacter(target, amount, damageEvent, causer, instigator, isCrit, isLethal) : amount;
+}
+
 static inline BOOL IMEnergyOverrideApplies(void *character) {
     return !IMMasterOff() && IMInfiniteEnergy() && IMIsPlayerCharacter(character);
 }
@@ -611,6 +623,10 @@ BOOL IMHooksInstall(void) {
     MSHookFunction(IMRuntimeAddress(RVA_ShowDamageMessage),
                    (void *)IMHookShowDamageMessage,
                    (void **)&sOrigShowDamageMessage);
+
+    MSHookFunction(IMRuntimeAddress(RVA_DamageCharacter),
+                   (void *)IMHookDamageCharacter,
+                   (void **)&sOrigDamageCharacter);
 
     MSHookFunction(IMRuntimeAddress(RVA_HasEnoughFunds),
                    (void *)IMHookHasEnoughFunds, (void **)&sOrigHasEnoughFunds);
