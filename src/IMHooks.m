@@ -241,18 +241,6 @@ static void IMHookShowDamageMessage(void *victim,
                            isCrit, isLethal, isTrueDamage);
 }
 
-typedef float (*IMDamageCharacterFn)(void *target, float amount, void *damageEvent, void *causer, void *instigator, bool isCrit, bool isLethal);
-static IMDamageCharacterFn sOrigDamageCharacter;
-
-static float IMHookDamageCharacter(void *target, float amount, void *damageEvent, void *causer, void *instigator, bool isCrit, bool isLethal) {
-    if (!IMMasterOff() && target && !IMIsPlayerCharacter(target)) {
-        if (IMDamageMultiplier() > 1.0) {
-            amount *= (float)IMDamageMultiplier();
-        }
-    }
-    return sOrigDamageCharacter ? sOrigDamageCharacter(target, amount, damageEvent, causer, instigator, isCrit, isLethal) : amount;
-}
-
 static inline BOOL IMEnergyOverrideApplies(void *character) {
     return !IMMasterOff() && IMInfiniteEnergy() && IMIsPlayerCharacter(character);
 }
@@ -590,7 +578,51 @@ static void IMHookFightButtonClicked(void *menu, bool ignoreArtifactCharges) {
     sOrigFightButtonClicked(menu, ignoreArtifactCharges);
 }
 
-__attribute__((naked)) static void IMHookRequirementStates(void) {
+__attribute__((naked)) typedef void (*IMDamageCharacterFn)(void *attacker,
+                                    void *victim,
+                                    float damageAmount,
+                                    float powerDamageAmount,
+                                    void *damageEvent,
+                                    float teamDamageChance,
+                                    float teamDamagePercent,
+                                    bool *outCrit,
+                                    bool *outLethalHit,
+                                    bool *outArmorPierce,
+                                    int32_t applyDamageMask);
+
+static IMDamageCharacterFn sOrigDamageCharacter;
+
+static void IMHookDamageCharacter(void *attacker,
+                                  void *victim,
+                                  float damageAmount,
+                                  float powerDamageAmount,
+                                  void *damageEvent,
+                                  float teamDamageChance,
+                                  float teamDamagePercent,
+                                  bool *outCrit,
+                                  bool *outLethalHit,
+                                  bool *outArmorPierce,
+                                  int32_t applyDamageMask) {
+    if (!IMMasterOff() && victim && damageAmount > 0.0f) {
+        if (!IMIsPlayerCharacter(victim)) {
+            if (IMFixedDamageEnabled()) {
+                damageAmount = (float)IMFixedDamage();
+            } else {
+                double multiplier = IMDamageMultiplier();
+                if (multiplier != 1.0) damageAmount = (float)(damageAmount * multiplier);
+            }
+        } else {
+            double multiplier = IMDefenseMultiplier();
+            if (multiplier != 1.0) damageAmount = (float)(damageAmount * multiplier);
+        }
+    }
+
+    sOrigDamageCharacter(attacker, victim, damageAmount, powerDamageAmount,
+                         damageEvent, teamDamageChance, teamDamagePercent,
+                         outCrit, outLethalHit, outArmorPierce, applyDamageMask);
+}
+
+static void IMHookRequirementStates(void) {
     __asm__ volatile(
         "stp  x29, x30, [sp, #-32]!                          \n"
         "mov  x29, sp                                        \n"

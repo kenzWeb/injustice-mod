@@ -9,12 +9,6 @@ static inline int IMClampHealth(long long value, int maxHealth) {
     return (int)value;
 }
 
-static long long IMScaledLoss(int delta, double multiplier) {
-    double scaled = (double)delta * multiplier;
-    if (scaled > (double)INT64_MAX) return INT64_MAX;
-    return (long long)llround(scaled);
-}
-
 IMHealthDecision IMResolveHealthWrite(BOOL victimIsPlayer,
                                       int currentHealth,
                                       int maxHealth,
@@ -36,21 +30,13 @@ IMHealthDecision IMResolveHealthWrite(BOOL victimIsPlayer,
     if (victimIsPlayer) {
         if (IMConsumeHealRequest()) {
             resolved = maxHealth;
-        } else if (delta > 0) {
-            resolved = IMGodMode()
-                ? maxHealth
-                : (long long)currentHealth - IMScaledLoss(delta, IMDefenseMultiplier());
+        } else if (delta > 0 && IMGodMode()) {
+            resolved = maxHealth;
         }
     } else if (IMAutoWinActive() || IMAutoCampaignShouldFinish()) {
         resolved = 0;
-    } else if (delta > 0) {
-        if (IMOneHitKill()) {
-            resolved = 0;
-        } else if (IMFixedDamageEnabled()) {
-            resolved = (long long)currentHealth - IMFixedDamage();
-        } else {
-            resolved = (long long)currentHealth - IMScaledLoss(delta, IMDamageMultiplier());
-        }
+    } else if (delta > 0 && IMOneHitKill()) {
+        resolved = 0;
     }
 
     decision.resolvedHealth = IMClampHealth(resolved, maxHealth);
@@ -66,13 +52,11 @@ float IMResolveDisplayedDamage(BOOL victimIsPlayer,
     double shown = rawAmount;
 
     if (victimIsPlayer) {
-        shown = IMGodMode() ? 0.0 : rawAmount * IMDefenseMultiplier();
+        shown = IMGodMode() ? 0.0 : rawAmount;
     } else if (IMOneHitKill()) {
         shown = victimCurrentHealth;
-    } else if (IMFixedDamageEnabled()) {
-        shown = (double)IMFixedDamage();
     } else {
-        shown = rawAmount * IMDamageMultiplier();
+        shown = rawAmount;
     }
 
     if (shown < 0.0) shown = 0.0;
