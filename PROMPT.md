@@ -6,7 +6,7 @@
 
 ## ЗАДАЧА
 
-Собрать iOS-твик (Theos, `.deb`) под джейлбрейк **RootHide** и вернуть путь к готовому
+Собрать iOS-твик (Theos, `.deb`) под **rootless**-джейлбрейк (Dopamine / palera1n) и вернуть путь к готовому
 пакету. Устанавливать на устройство не нужно — только сборка.
 
 Исходники:
@@ -24,15 +24,15 @@ git clone git@github.com:kenzWeb/injustice-mod.git && cd injustice-mod
 
 ## ОКРУЖЕНИЕ
 
-macOS с Xcode Command Line Tools. Нужен **форк Theos от roothide** — в стоковом Theos
-нет схемы упаковки `roothide`, сборка на ней падает.
+macOS с Xcode Command Line Tools. Подходит стоковый Theos — схема `rootless`
+в нём есть.
 
 ```bash
 xcode-select --install 2>/dev/null || true
 brew install ldid xz
 
-export THEOS=~/theos-roothide
-git clone --recursive https://github.com/roothide/theos "$THEOS"
+export THEOS=~/theos
+git clone --recursive https://github.com/theos/theos "$THEOS"
 ```
 
 SDK скачивать не надо: на macOS Theos берёт iPhoneOS SDK из Xcode, а твик использует
@@ -58,17 +58,14 @@ cd injustice-mod
 Если путь заведомо без пробелов, можно и напрямую:
 
 ```bash
-export THEOS=~/theos-roothide
+export THEOS=~/theos
 make package FINALPACKAGE=1
 ```
 
 Готовый пакет появится в `./packages/*.deb`.
 
-**Про имя файла.** В форке roothide `vendor/mod/roothide/package/deb.mk`
-безусловно выставляет `THEOS_PACKAGE_ARCH := iphoneos-arm64e`, перебивая поле
-`Architecture:` из `control` и не завися от `ARCHS`. Поэтому пакет **всегда**
-получает суффикс `_iphoneos-arm64e.deb`. Ориентируйся на поле `Version`, а не
-на арх-суффикс.
+**Про имя файла.** При схеме `rootless` пакет получает суффикс
+`_iphoneos-arm64.deb`. Ориентируйся на поле `Version`, а не на арх-суффикс.
 
 ## КРИТИЧНО
 
@@ -83,13 +80,13 @@ make package FINALPACKAGE=1
 4. Если компилятор ругается — чини **минимально** (синтаксис, депрекейты, порядок
    объявлений) и в отчёте перечисли построчно, что именно поменял и почему.
 5. Не добавлять никаких сетевых запросов, аналитики и обращений к ФС. Твик их не имеет
-   намеренно: на RootHide рандомизированный jbroot, и любой хардкод путей всё сломает.
+   намеренно: на rootless-джейлбрейке всё живёт под /var/jb, и любой хардкод системных путей ломается. Лог — исключение: он пишется в контейнер приложения, а не в jbroot.
 
 ## ТИПОВЫЕ ОШИБКИ
 
 | Симптом | Причина / что делать |
 |---|---|
-| `Unknown package scheme 'roothide'` | взят стоковый Theos — нужен форк roothide |
+| `Unknown package scheme 'rootless'` | очень старый Theos — обновить |
 | `substrate.h: No such file` | Theos склонирован без `--recursive`, либо `$THEOS` не выставлен |
 | `ldid: command not found` | `brew install ldid` |
 | `Your project is located at ... which contains spaces` | собирать через `./build.sh`, он зеркалит дерево во временный каталог |
@@ -108,5 +105,5 @@ make package FINALPACKAGE=1
 1. Полный вывод сборки (или хотя бы все ошибки/ворнинги).
 2. Абсолютный путь к собранному `.deb` и его размер.
 3. Вывод `dpkg-deb -I <deb>` и `dpkg-deb -c <deb>` — сверять **`Version`**,
-   имя файла всегда с суффиксом `arm64e`.
+   имя файла с суффиксом `arm64`.
 4. Список изменений, если что-то пришлось править.

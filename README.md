@@ -11,27 +11,19 @@ refuses to build from a path containing spaces and this repo usually lives
 under `.../injustice 2/`, so the script mirrors the tree into a scratch
 directory, builds there and copies the `.deb` back into `packages/`.
 
-The packaged file is always named `..._iphoneos-arm64e.deb`: the roothide fork's
-`vendor/mod/roothide/package/deb.mk` forces `THEOS_PACKAGE_ARCH` to
-`iphoneos-arm64e` regardless of `ARCHS` or the `Architecture:` field. Identify a
-build by its `Version`, not by the architecture suffix.
+With the `rootless` scheme the package is named `..._iphoneos-arm64.deb`.
+Identify a build by its `Version`, not by the architecture suffix.
 
-The Makefile ships set to `THEOS_PACKAGE_SCHEME := roothide`.
+The Makefile ships set to `THEOS_PACKAGE_SCHEME := rootless`.
 
-### RootHide
+### Rootless
 
-RootHide relocates the whole jailbreak into a randomised jbroot, so it needs the
-**roothide fork of Theos** — stock Theos has no `roothide` scheme and will error
-out on it:
+Stock Theos is enough — the `rootless` scheme is built in:
 
 ```bash
-git clone --recursive https://github.com/roothide/theos ~/theos-roothide
-export THEOS=~/theos-roothide
-make package
+git clone --recursive https://github.com/theos/theos ~/theos
+export THEOS=~/theos
 ```
-
-Nothing else changes: this tweak opens no files and hardcodes no paths, so there
-is no `jbroot()` translation to do. Only packaging is jailbreak-specific.
 
 ### Other jailbreaks
 

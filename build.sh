@@ -55,35 +55,34 @@ grn()  { printf '\033[1;32m%s\033[0m\n' "$*"; }
 ylw()  { printf '\033[1;33m%s\033[0m\n' "$*"; }
 
 # ---------------------------------------------------------------- locate Theos
-# The roothide fork is required — stock Theos has no 'roothide' packaging
-# scheme. Rather than trusting $THEOS (a stale export in ~/.zprofile can point
-# at a Theos that isn't there), look for the fork's marker file and pick the
-# first install that actually has it.
-is_roothide() { [ -f "$1/vendor/mod/roothide/package/deb.mk" ]; }
+# Rootless needs stock Theos; a roothide fork works too, but the scheme in the
+# Makefile decides the layout. Trusting $THEOS alone is unreliable because a
+# stale export can point at a directory that no longer exists.
+is_theos() { [ -f "$1/makefiles/common.mk" ]; }
 
 CHOSEN=""
-for cand in "${THEOS:-}" "$HOME/theos-roothide" "$HOME/theos"; do
+for cand in "${THEOS:-}" "$HOME/theos" "$HOME/theos-roothide"; do
     [ -n "$cand" ] || continue
-    if is_roothide "$cand"; then CHOSEN="$cand"; break; fi
+    if is_theos "$cand"; then CHOSEN="$cand"; break; fi
 done
 
 if [ -n "${THEOS:-}" ] && [ -n "$CHOSEN" ] && [ "$CHOSEN" != "$THEOS" ]; then
-    ylw "note: \$THEOS points at $THEOS, which is not a roothide Theos — using $CHOSEN"
+    ylw "note: \$THEOS points at $THEOS, which is not a Theos install — using $CHOSEN"
 fi
 
 missing=0
 if [ -z "$CHOSEN" ]; then
-    red "No roothide Theos found (checked \$THEOS, ~/theos-roothide, ~/theos)"
+    red "No Theos found (checked \$THEOS, ~/theos, ~/theos-roothide)"
     cat <<EOF
 
-Stock Theos has no 'roothide' packaging scheme. Install the fork:
+Install it:
 
   brew install ldid xz
-  git clone --recursive https://github.com/roothide/theos ~/theos-roothide
+  git clone --recursive https://github.com/theos/theos ~/theos
 
-If ~/theos-roothide already exists but is incomplete:
+If ~/theos already exists but is incomplete:
 
-  git -C ~/theos-roothide submodule update --init --recursive
+  git -C ~/theos submodule update --init --recursive
 
 EOF
     missing=1
