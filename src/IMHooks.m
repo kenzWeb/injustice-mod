@@ -578,7 +578,7 @@ static void IMHookFightButtonClicked(void *menu, bool ignoreArtifactCharges) {
     sOrigFightButtonClicked(menu, ignoreArtifactCharges);
 }
 
-__attribute__((naked)) typedef void (*IMDamageCharacterFn)(void *attacker,
+typedef void (*IMDamageCharacterFn)(void *attacker,
                                     void *victim,
                                     float damageAmount,
                                     float powerDamageAmount,
@@ -622,7 +622,7 @@ static void IMHookDamageCharacter(void *attacker,
                          outCrit, outLethalHit, outArmorPierce, applyDamageMask);
 }
 
-static void IMHookRequirementStates(void) {
+__attribute__((naked)) static void IMHookRequirementStates(void) {
     __asm__ volatile(
         "stp  x29, x30, [sp, #-32]!                          \n"
         "mov  x29, sp                                        \n"
