@@ -7,7 +7,7 @@
 #   ./build.sh -s rootless  build for a different packaging scheme
 #   ./build.sh --rootless   shorthand for -s rootless
 #
-# Without -s the scheme from the Makefile is used (roothide). Schemes differ
+# Without -s the scheme from the Makefile is used (rootless). Schemes differ
 # only in packaging: roothide installs under the randomised jbroot and labels
 # the deb iphoneos-arm64e, rootless installs under /var/jb and labels it
 # iphoneos-arm64. Each scheme gets its own scratch dir, so switching between
