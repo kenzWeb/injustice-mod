@@ -5,6 +5,7 @@
 #import "IMPresets.h"
 #import "IMTheme.h"
 #import "IMLog.h"
+#import "IMHooks.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -426,9 +427,9 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)onStartSoloRaidFarm {
-    // Пробуем вызвать ClaimSoloRaidBossRewards через внутреннюю структуру/поиск
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Тест ClaimSoloRaidBossRewards"
-                                                                   message:@"Запрос отправлен на сервер для босса Level 1, Boss 0. Проверьте почту или консоль."
+    IMTriggerClaimSoloRaidBoss();
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ClaimSoloRaidBossRewards"
+                                                                   message:@"Прямой вызов ClaimSoloRaidBossRewards отправлен движку! Проверьте почту (Inbox) и файл лога."
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self.window.rootViewController presentViewController:alert animated:YES completion:nil];

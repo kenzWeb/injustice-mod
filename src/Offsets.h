@@ -41,6 +41,7 @@
 #define RVA_OnFightButtonClicked    0x1F4D690
 #define RVA_RequirementsResult      0x1F625DC
 #define OFF_RequirementsUnmet       0x750
+#define RVA_ClaimSoloRaidBossRewards 0x215DC78
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
 

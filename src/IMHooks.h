@@ -7,6 +7,7 @@ extern "C" {
 
 BOOL IMHooksInstall(void);
 BOOL IMHooksInstalled(void);
+void IMTriggerClaimSoloRaidBoss(void);
 
 #ifdef __cplusplus
 }

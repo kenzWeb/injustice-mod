@@ -561,6 +561,27 @@ static bool IMHookTeamMeetsRequirements(void *requirementData, void *team,
     return sOrigTeamMeetsRequirements(requirementData, team, context, flags);
 }
 
+typedef void (*IMClaimSoloRaidBossRewardsFn)(void *manager, void *bossInfo);
+static IMClaimSoloRaidBossRewardsFn sOrigClaimSoloRaidBossRewards;
+static void *sLastSoloRaidManager;
+
+static void IMHookClaimSoloRaidBossRewards(void *manager, void *bossInfo) {
+    sLastSoloRaidManager = manager;
+    IMLog("ClaimSoloRaidBossRewards called: manager=%p bossInfo=%p", manager, bossInfo);
+    if (sOrigClaimSoloRaidBossRewards) {
+        sOrigClaimSoloRaidBossRewards(manager, bossInfo);
+    }
+}
+
+void IMTriggerClaimSoloRaidBoss(void) {
+    void *targetManager = sLastSoloRaidManager;
+    IMLog("IMTriggerClaimSoloRaidBoss called: sOrig=%p manager=%p", sOrigClaimSoloRaidBossRewards, targetManager);
+    if (sOrigClaimSoloRaidBossRewards) {
+        sOrigClaimSoloRaidBossRewards(targetManager, NULL);
+        IMLog("IMTriggerClaimSoloRaidBoss executed");
+    }
+}
+
 typedef void (*IMRequirementsResultFn)(void *context, void *resultFlag);
 static IMRequirementsResultFn sOrigRequirementsResult;
 
@@ -719,6 +740,9 @@ BOOL IMHooksInstall(void) {
                    (void *)IMHookGetCurrentPower, (void **)&sOrigGetCurrentPower);
     MSHookFunction(IMRuntimeAddress(RVA_GetCurrentEnergy),
                    (void *)IMHookGetCurrentEnergy, (void **)&sOrigGetCurrentEnergy);
+    MSHookFunction(IMRuntimeAddress(RVA_ClaimSoloRaidBossRewards),
+                   (void *)IMHookClaimSoloRaidBossRewards,
+                   (void **)&sOrigClaimSoloRaidBossRewards);
 
     // System VPN / Proxy bypass hooks
     MSHookFunction((void *)CFNetworkCopySystemProxySettings,
