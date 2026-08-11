@@ -427,9 +427,13 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)onStartSoloRaidFarm {
-    IMTriggerClaimSoloRaidBoss();
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ClaimSoloRaidBossRewards"
-                                                                   message:@"Прямой вызов ClaimSoloRaidBossRewards отправлен движку! Проверьте почту (Inbox) и файл лога."
+    BOOL success = IMTriggerClaimSoloRaidBoss();
+    NSString *title = success ? @"Запрос отправлен" : @"Менеджер не захвачен";
+    NSString *msg = success
+        ? @"Прямой вызов ClaimSoloRaidBossRewards отправлен движку! Проверьте почту (Inbox) и файл лога."
+        : @"Указатель на менеджер рейда ещё не пойман в памяти (manager=NULL). Запустите 1 бой в рейде или откройте экран босса, затем нажмите снова.";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:msg
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self.window.rootViewController presentViewController:alert animated:YES completion:nil];

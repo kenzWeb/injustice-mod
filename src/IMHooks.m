@@ -573,13 +573,19 @@ static void IMHookClaimSoloRaidBossRewards(void *manager, void *bossInfo) {
     }
 }
 
-void IMTriggerClaimSoloRaidBoss(void) {
+BOOL IMTriggerClaimSoloRaidBoss(void) {
     void *targetManager = sLastSoloRaidManager;
     IMLog("IMTriggerClaimSoloRaidBoss called: sOrig=%p manager=%p", sOrigClaimSoloRaidBossRewards, targetManager);
+    if (!targetManager) {
+        IMLog("IMTriggerClaimSoloRaidBoss aborted: manager pointer is NULL (0x0)");
+        return NO;
+    }
     if (sOrigClaimSoloRaidBossRewards) {
         sOrigClaimSoloRaidBossRewards(targetManager, NULL);
         IMLog("IMTriggerClaimSoloRaidBoss executed");
+        return YES;
     }
+    return NO;
 }
 
 typedef void (*IMRequirementsResultFn)(void *context, void *resultFlag);
