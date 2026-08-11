@@ -230,6 +230,12 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addButtonRow:@"Копировать ссылку Tapjoy" target:self action:@selector(onCopyTapjoyURL)];
     [builder addSeparator];
 
+    [builder addSwitchRow:@"Авто-фарм Соло-рейд"
+                   target:self action:@selector(onAutoSoloRaid:) accent:YES];
+    [builder addCaption:@"автоматически проходит боссов соло-рейда"];
+    [builder addButtonRow:@"Запустить фарм рейда" target:self action:@selector(onStartSoloRaidFarm)];
+    [builder addSeparator];
+
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
                                           target:self action:@selector(onPresetLoad:)];
     [builder addButtonTrioRow:@"Сохранить в"
@@ -413,6 +419,18 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
     }
+}
+
+- (void)onAutoSoloRaid:(UISwitch *)sender {
+    /* TODO: включить/выключить авто-фарм соло-рейда */
+}
+
+- (void)onStartSoloRaidFarm {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Авто-фарм Соло-рейд"
+                                                                   message:@"Функция в разработке. Зайдите на экран соло-рейда и нажмите ещё раз."
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)onPresetSave:(UIButton *)sender {
