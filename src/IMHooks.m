@@ -573,16 +573,26 @@ static void IMHookClaimSoloRaidBossRewards(void *manager, void *bossInfo) {
     }
 }
 
+typedef void *(*IMGetSoloRaidManagerFn)(void);
+
 BOOL IMTriggerClaimSoloRaidBoss(void) {
     void *targetManager = sLastSoloRaidManager;
+    if (!targetManager) {
+        IMGetSoloRaidManagerFn getManager = (IMGetSoloRaidManagerFn)IMRuntimeAddress(RVA_GetSoloRaidManager);
+        if (getManager) {
+            targetManager = getManager();
+            sLastSoloRaidManager = targetManager;
+            IMLog("IMTriggerClaimSoloRaidBoss: fetched manager via engine singleton = %p", targetManager);
+        }
+    }
     IMLog("IMTriggerClaimSoloRaidBoss called: sOrig=%p manager=%p", sOrigClaimSoloRaidBossRewards, targetManager);
     if (!targetManager) {
-        IMLog("IMTriggerClaimSoloRaidBoss aborted: manager pointer is NULL (0x0)");
+        IMLog("IMTriggerClaimSoloRaidBoss aborted: manager pointer is still NULL (0x0)");
         return NO;
     }
     if (sOrigClaimSoloRaidBossRewards) {
         sOrigClaimSoloRaidBossRewards(targetManager, NULL);
-        IMLog("IMTriggerClaimSoloRaidBoss executed");
+        IMLog("IMTriggerClaimSoloRaidBoss executed successfully");
         return YES;
     }
     return NO;
