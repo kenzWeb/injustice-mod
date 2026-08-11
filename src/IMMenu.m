@@ -5,6 +5,7 @@
 #import "IMPresets.h"
 #import "IMTheme.h"
 #import "IMLog.h"
+#import "IMHooks.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -245,6 +246,9 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addSwitchRow:@"Забирать награды из почты"
                    target:self action:@selector(onAutoClaim:) accent:NO];
     [builder addCaption:@"нажимает «забрать всё», когда почта открыта"];
+    [builder addButtonRow:@"Забрать награду за босса"
+                   target:self action:@selector(onClaimBoss)];
+    [builder addCaption:@"прямой вызов ClaimSoloRaidBossRewards по текущему бою"];
     [builder addSeparator];
 
     [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
@@ -262,11 +266,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     self.vpnSwitch.on = IMBypassVPNCheck();
     [builder addCaption:@"скрывает VPN/прокси от Tapjoy и системы"];
     [builder addButtonRow:@"Копировать ссылку Tapjoy" target:self action:@selector(onCopyTapjoyURL)];
-    [builder addSeparator];
-
-    [builder addSwitchRow:@"Авто-фарм Соло-рейд"
-                   target:self action:@selector(onAutoSoloRaid:) accent:YES];
-    [builder addCaption:@"автоматически проходит боссов соло-рейда"];
     [builder addSeparator];
 
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
@@ -437,6 +436,20 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 
 - (void)onAutoRaid:(UISwitch *)sender { IMSetAutoRaid(sender.isOn); }
 - (void)onRaidIgnoreGates:(UISwitch *)sender { IMSetRaidIgnoreGates(sender.isOn); }
+
+- (void)onClaimBoss {
+    BOOL sent = IMTriggerClaimSoloRaidBoss(-1, -1, -1);
+    NSString *title = sent ? @"Запрос отправлен" : @"Менеджер не пойман";
+    NSString *msg = sent
+        ? @"ClaimSoloRaidBossRewards вызван по текущему бою. Награду начисляет сервер — "
+           "если босс у него не числится убитым, в почте ничего не появится. Смотри лог."
+        : @"USoloRaidManager ещё не пойман. Зайди на экран рейда и нажми снова.";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:msg
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+}
 - (void)onAutoClaim:(UISwitch *)sender { IMSetAutoRaidClaimInbox(sender.isOn); }
 
 - (void)applyRaidDelay:(double)value {
@@ -469,10 +482,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
     }
-}
-
-- (void)onAutoSoloRaid:(UISwitch *)sender {
-    /* TODO: включить/выключить авто-фарм соло-рейда */
 }
 
 - (void)onPresetSave:(UIButton *)sender {

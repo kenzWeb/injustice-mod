@@ -680,6 +680,52 @@ static void *IMHookInboxCreateMessageData(void *inbox, void *message) {
     return result;
 }
 
+typedef void (*IMClaimBossRewardsFn)(void *manager, int32_t difficultyIndex,
+                                     int32_t levelIndex, int32_t bossIndex);
+typedef void *(*IMGetSoloRaidManagerFn)(void);
+
+static IMClaimBossRewardsFn sOrigClaimBossRewards;
+static void * volatile sSoloRaidManager;
+
+static void IMHookClaimBossRewards(void *manager, int32_t difficultyIndex,
+                                   int32_t levelIndex, int32_t bossIndex) {
+    if (manager) sSoloRaidManager = manager;
+    IMLog("claim boss rewards manager=%p diff=%d level=%d boss=%d",
+          manager, difficultyIndex, levelIndex, bossIndex);
+    sOrigClaimBossRewards(manager, difficultyIndex, levelIndex, bossIndex);
+}
+
+BOOL IMTriggerClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex) {
+    if (!sOrigClaimBossRewards) return NO;
+
+    void *manager = sSoloRaidManager;
+    if (!manager) {
+        IMGetSoloRaidManagerFn get =
+            (IMGetSoloRaidManagerFn)IMRuntimeAddress(RVA_GetSoloRaidManager);
+        if (get) {
+            manager = get();
+            if (manager) sSoloRaidManager = manager;
+        }
+    }
+    if (!manager) {
+        IMLog("claim trigger: no manager");
+        return NO;
+    }
+
+    if (difficultyIndex < 0 || levelIndex < 0 || bossIndex < 0) {
+        difficultyIndex = *(int32_t *)((uintptr_t)manager + OFF_MgrCachedDifficulty);
+        levelIndex      = *(int32_t *)((uintptr_t)manager + OFF_MgrCachedLevel);
+        bossIndex       = *(int32_t *)((uintptr_t)manager + OFF_MgrCachedBattleIndex);
+        IMLog("claim trigger: took cached battle info");
+    }
+
+    IMLog("claim trigger manager=%p diff=%d level=%d boss=%d",
+          manager, difficultyIndex, levelIndex, bossIndex);
+    sOrigClaimBossRewards(manager, (int32_t)difficultyIndex,
+                          (int32_t)levelIndex, (int32_t)bossIndex);
+    return YES;
+}
+
 typedef bool (*IMTeamMeetsFn)(void *requirementData, void *team, void *context, long flags);
 static IMTeamMeetsFn sOrigTeamMeetsRequirements;
 
@@ -838,6 +884,9 @@ BOOL IMHooksInstall(void) {
     MSHookFunction(IMRuntimeAddress(RVA_InboxCreateMessageData),
                    (void *)IMHookInboxCreateMessageData,
                    (void **)&sOrigInboxCreateMessageData);
+    MSHookFunction(IMRuntimeAddress(RVA_ClaimSoloRaidBossRewards),
+                   (void *)IMHookClaimBossRewards,
+                   (void **)&sOrigClaimBossRewards);
 
     MSHookFunction(IMRuntimeAddress(RVA_TeamMeetsRequirements),
                    (void *)IMHookTeamMeetsRequirements,

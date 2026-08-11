@@ -41,6 +41,8 @@
 #define RVA_OnFightButtonClicked    0x1F4D690
 #define RVA_RequirementsResult      0x1F625DC
 #define OFF_RequirementsUnmet       0x750
+#define RVA_ClaimSoloRaidBossRewards 0x1F9DE0C
+#define RVA_GetSoloRaidManager      0x1B7A4BC
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
 
@@ -76,6 +78,10 @@
 #define OFF_PipsPremium             0x354
 
 #define OFF_InboxClaimAllButton     0x3C0
+
+#define OFF_MgrCachedDifficulty     0x64
+#define OFF_MgrCachedBattleIndex    0x68
+#define OFF_MgrCachedLevel          0x6C
 
 #define OFF_CurrentEnemy            0x500
 #define OFF_CurrentHealth           0x4E4
