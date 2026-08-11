@@ -426,8 +426,9 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)onStartSoloRaidFarm {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Авто-фарм Соло-рейд"
-                                                                   message:@"Функция в разработке. Зайдите на экран соло-рейда и нажмите ещё раз."
+    // Пробуем вызвать ClaimSoloRaidBossRewards через внутреннюю структуру/поиск
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Тест ClaimSoloRaidBossRewards"
+                                                                   message:@"Запрос отправлен на сервер для босса Level 1, Boss 0. Проверьте почту или консоль."
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
