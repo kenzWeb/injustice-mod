@@ -422,7 +422,7 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 }
 
 - (void)onAutoSoloRaid:(UISwitch *)sender {
-    /* TODO: включить/выключить авто-фарм соло-рейда */
+    IMSetAutoSoloRaid(sender.isOn);
 }
 
 - (void)onStartSoloRaidFarm {

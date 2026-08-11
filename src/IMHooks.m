@@ -434,14 +434,14 @@ static void IMHookPreFightOpponentView(void *menu) {
     IMTraceBump(IMTracePreFightView);
     IMLog("prefight view menu=%p gen=%d armed=%d", menu, sNavGeneration, sPreFightPressArmed);
 
-    if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
+    if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoSoloRaid()) || !sPreFightStartFight) return;
     if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
     const int generation = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoSoloRaid())) return;
         if (generation != sNavGeneration) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         void *current = sPreFightMenu;
@@ -538,13 +538,13 @@ static void IMHookResultsTransitionIn(void *popup) {
     sPreFightPressArmed = YES;
     sNavGeneration++;
     IMScheduleSummaryClick(1, sNavGeneration);
-    if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
+    if (!popup || IMMasterOff() || (!IMAutoCampaign() && !IMAutoSoloRaid()) || !sResultsOnContinue) return;
 
     __block void *target = popup;
     const int resultsGeneration = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoSoloRaid())) return;
         if (resultsGeneration != sNavGeneration) return;
         IMLog("results continue popup=%p", target);
         sResultsOnContinue(target);
