@@ -434,14 +434,14 @@ static void IMHookPreFightOpponentView(void *menu) {
     IMTraceBump(IMTracePreFightView);
     IMLog("prefight view menu=%p gen=%d armed=%d", menu, sNavGeneration, sPreFightPressArmed);
 
-    if (IMMasterOff() || !IMAutoCampaign() || !sPreFightStartFight) return;
+    if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoRaid()) || !sPreFightStartFight) return;
     if (!sPreFightPressArmed) return;
     if (IMInCombat() || IMFightStartedRecently()) return;
 
     const int generation = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoRaid())) return;
         if (generation != sNavGeneration) return;
         if (IMInCombat() || IMFightStartedRecently()) return;
         void *current = sPreFightMenu;
@@ -538,18 +538,146 @@ static void IMHookResultsTransitionIn(void *popup) {
     sPreFightPressArmed = YES;
     sNavGeneration++;
     IMScheduleSummaryClick(1, sNavGeneration);
-    if (!popup || IMMasterOff() || !IMAutoCampaign() || !sResultsOnContinue) return;
+    if (!popup || IMMasterOff() || (!IMAutoCampaign() && !IMAutoRaid()) || !sResultsOnContinue) return;
 
     __block void *target = popup;
     const int resultsGeneration = sNavGeneration;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (IMMasterOff() || !IMAutoCampaign()) return;
+        if (IMMasterOff() || (!IMAutoCampaign() && !IMAutoRaid())) return;
         if (resultsGeneration != sNavGeneration) return;
         IMLog("results continue popup=%p", target);
         sResultsOnContinue(target);
         IMLog("results continue done");
     });
+}
+
+typedef void (*IMRaidPopulateFn)(void *menu, void *bossData);
+typedef void (*IMRaidSummaryStartFn)(void *window);
+typedef bool (*IMRaidCanFightFn)(void *menu, void *bossData);
+typedef void *(*IMInboxCreateDataFn)(void *inbox, void *message);
+
+static IMRaidPopulateFn     sOrigRaidPopulateSummary;
+static IMRaidSummaryStartFn sRaidSummaryStartClicked;
+static IMInboxCreateDataFn  sOrigInboxCreateMessageData;
+
+static void * volatile sRaidSummaryWindow;
+static long long volatile sRaidSummarySeenMs;
+static void * volatile sInboxMenu;
+
+static void *IMRaidFieldPtr(void *base, uintptr_t offset) {
+    if (!base) return NULL;
+    return *(void **)((uintptr_t)base + offset);
+}
+
+static BOOL IMRaidHasAttempts(void *menu) {
+    void *panel = IMRaidFieldPtr(menu, OFF_RaidInfoPanel);
+    void *pips  = IMRaidFieldPtr(panel, OFF_RaidInfoPipsBox);
+    if (!pips) return YES;
+
+    int common  = *(int *)((uintptr_t)pips + OFF_PipsCommon);
+    int bonus   = *(int *)((uintptr_t)pips + OFF_PipsBonus);
+    int premium = *(int *)((uintptr_t)pips + OFF_PipsPremium);
+    IMPublishRaidAttempts(common, bonus, premium);
+    return (common + bonus + premium) > 0;
+}
+
+static BOOL IMRaidCanFight(void *menu, void *bossData) {
+    if (!menu || !bossData) return NO;
+    void *vtable = *(void **)menu;
+    if (!vtable) return NO;
+    IMRaidCanFightFn fn =
+        *(IMRaidCanFightFn *)((uintptr_t)vtable + VT_RaidCanFight);
+    if (!fn) return NO;
+    return fn(menu, bossData);
+}
+
+static void IMHookRaidPopulateSummary(void *menu, void *bossData) {
+    sOrigRaidPopulateSummary(menu, bossData);
+    if (!menu) return;
+
+    sRaidSummarySeenMs = IMNowMillis();
+    IMTraceBump(IMTraceRaidSummary);
+
+    if (bossData) {
+        IMPublishRaidBoss(*(int *)((uintptr_t)bossData + OFF_RaidBossHealthCurrent),
+                          *(int *)((uintptr_t)bossData + OFF_RaidBossHealthMax),
+                          *(int *)((uintptr_t)bossData + OFF_RaidBossBattleIndex));
+    }
+
+    void *root = IMRaidFieldPtr(menu, OFF_RaidRootPanel);
+    void *window = IMRaidFieldPtr(root, OFF_RaidRootSummaryWindow);
+    sRaidSummaryWindow = window;
+
+    BOOL hasAttempts = IMRaidHasAttempts(menu);
+    IMLog("raid summary menu=%p boss=%p window=%p attempts=%d",
+          menu, bossData, window, hasAttempts);
+
+    if (IMMasterOff() || !IMAutoRaid() || !sRaidSummaryStartClicked) return;
+    if (!window || !bossData) return;
+    if (IMInCombat() || IMFightStartedRecently()) return;
+
+    const BOOL ignoreGates = IMRaidIgnoreGates();
+    if (!hasAttempts) {
+        if (!ignoreGates) {
+            IMLog("raid stop: no attempts left");
+            return;
+        }
+        IMLog("raid gate: no attempts, forcing anyway");
+    }
+    if (!IMRaidCanFight(menu, bossData)) {
+        if (!ignoreGates) {
+            IMLog("raid stop: CanFight false");
+            return;
+        }
+        IMLog("raid gate: CanFight false, forcing anyway");
+    }
+    if (!IMAutoRaidMayStartBoss()) return;
+
+    const int generation = sNavGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (IMMasterOff() || !IMAutoRaid()) return;
+        if (generation != sNavGeneration) return;
+        if (IMInCombat() || IMFightStartedRecently()) return;
+        void *current = sRaidSummaryWindow;
+        if (!current || IMNowMillis() - sRaidSummarySeenMs > 5000) return;
+        IMTraceBump(IMTraceRaidStarted);
+        sPreFightPressArmed = YES;
+        IMLog("raid start window=%p gen=%d", current, generation);
+        sRaidSummaryStartClicked(current);
+        IMLog("raid start done");
+    });
+}
+
+static void IMScheduleInboxClaim(int tick, void *inbox) {
+    if (tick > 6 || IMMasterOff() || !sSimulateClick) return;
+    if (sInboxMenu != inbox) return;
+
+    void *button = IMRaidFieldPtr(inbox, OFF_InboxClaimAllButton);
+    if (button) {
+        IMTraceBump(IMTraceRaidClaim);
+        IMLog("inbox claim all inbox=%p button=%p tick=%d", inbox, button, tick);
+        sSimulateClick(button);
+        return;
+    }
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ IMScheduleInboxClaim(tick + 1, inbox); });
+}
+
+static void *IMHookInboxCreateMessageData(void *inbox, void *message) {
+    void *result = sOrigInboxCreateMessageData(inbox, message);
+    if (!inbox) return result;
+
+    sInboxMenu = inbox;
+    if (IMMasterOff() || !IMAutoRaidClaimInbox()) return result;
+    if (!IMAutoRaidMayClaim()) return result;
+
+    __block void *target = inbox;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ IMScheduleInboxClaim(1, target); });
+    return result;
 }
 
 typedef bool (*IMTeamMeetsFn)(void *requirementData, void *team, void *context, long flags);
@@ -702,6 +830,15 @@ BOOL IMHooksInstall(void) {
     MSHookFunction(IMRuntimeAddress(RVA_ResultsTransitionIn),
                    (void *)IMHookResultsTransitionIn,
                    (void **)&sOrigResultsTransitionIn);
+    sRaidSummaryStartClicked =
+        (IMRaidSummaryStartFn)IMRuntimeAddress(RVA_RaidSummaryStartClicked);
+    MSHookFunction(IMRuntimeAddress(RVA_SoloRaidPopulateSummary),
+                   (void *)IMHookRaidPopulateSummary,
+                   (void **)&sOrigRaidPopulateSummary);
+    MSHookFunction(IMRuntimeAddress(RVA_InboxCreateMessageData),
+                   (void *)IMHookInboxCreateMessageData,
+                   (void **)&sOrigInboxCreateMessageData);
+
     MSHookFunction(IMRuntimeAddress(RVA_TeamMeetsRequirements),
                    (void *)IMHookTeamMeetsRequirements,
                    (void **)&sOrigTeamMeetsRequirements);

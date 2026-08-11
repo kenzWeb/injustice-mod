@@ -25,6 +25,21 @@ static atomic_llong sLastChapterAdvanceMs;
 static atomic_bool sBypassVPNCheck;
 static atomic_llong sAutoWinDeadlineMs;
 
+static atomic_bool  sAutoRaid;
+static atomic_bool  sRaidIgnoreGates;
+static atomic_bool  sAutoRaidClaimInbox;
+static atomic_llong sAutoRaidDelayMs;
+static atomic_llong sLastRaidBossMs;
+static atomic_llong sLastRaidClaimMs;
+
+static atomic_int   sBossHP;
+static atomic_int   sBossMax;
+static atomic_int   sBossBattleIndex;
+static atomic_llong sBossSeenMs;
+static atomic_int   sPipsCommon;
+static atomic_int   sPipsBonus;
+static atomic_int   sPipsPremium;
+
 static atomic_llong sFixedDamage;
 static atomic_llong sDamageMultiplierScaled;
 static atomic_llong sDefenseMultiplierScaled;
@@ -48,6 +63,8 @@ void IMSettingsInit(void) {
     atomic_store(&sDefenseMultiplierScaled, kScale);
     atomic_store(&sFixedDamage, 1000LL);
     atomic_store(&sAutoCampaignDelayMs, 3000LL);
+    atomic_store(&sAutoRaidDelayMs, 12000LL);
+    atomic_store(&sAutoRaidClaimInbox, true);
     atomic_store(&sBypassVPNCheck, true);
 }
 
@@ -128,10 +145,13 @@ void IMSetAutoCampaignDelay(double seconds) {
 }
 
 BOOL IMAutoCampaignShouldFinish(void) {
-    if (!atomic_load(&sAutoCampaign)) return NO;
+    BOOL raid = atomic_load(&sAutoRaid);
+    if (!raid && !atomic_load(&sAutoCampaign)) return NO;
     long long started = atomic_load(&sCombatStartMs);
     if (started <= 0) return NO;
-    return (IMNowMs() - started) >= atomic_load(&sAutoCampaignDelayMs);
+    long long delay = raid ? atomic_load(&sAutoRaidDelayMs)
+                           : atomic_load(&sAutoCampaignDelayMs);
+    return (IMNowMs() - started) >= delay;
 }
 
 BOOL IMAutoCampaignMayPressSummary(void) {
@@ -168,6 +188,77 @@ BOOL IMAutoCampaignMayStartBattle(void) {
     if (last > 0 && now - last < 4000LL) return NO;
     atomic_store(&sLastAutoStartMs, now);
     return YES;
+}
+
+BOOL IMAutoRaid(void) { return atomic_load(&sAutoRaid); }
+
+void IMSetAutoRaid(BOOL on) {
+    atomic_store(&sAutoRaid, on);
+    if (!on) {
+        atomic_store(&sCombatStartMs, 0);
+        atomic_store(&sLastRaidBossMs, 0);
+        atomic_store(&sLastRaidClaimMs, 0);
+    }
+}
+
+BOOL IMRaidIgnoreGates(void) { return atomic_load(&sRaidIgnoreGates); }
+void IMSetRaidIgnoreGates(BOOL on) { atomic_store(&sRaidIgnoreGates, on); }
+
+BOOL IMAutoRaidClaimInbox(void) { return atomic_load(&sAutoRaidClaimInbox); }
+void IMSetAutoRaidClaimInbox(BOOL on) { atomic_store(&sAutoRaidClaimInbox, on); }
+
+double IMAutoRaidDelay(void) {
+    return (double)atomic_load(&sAutoRaidDelayMs) / 1000.0;
+}
+
+void IMSetAutoRaidDelay(double seconds) {
+    if (seconds < 0.0) seconds = 0.0;
+    if (seconds > 60.0) seconds = 60.0;
+    atomic_store(&sAutoRaidDelayMs, (long long)llround(seconds * 1000.0));
+}
+
+BOOL IMAutoRaidMayStartBoss(void) {
+    if (!atomic_load(&sAutoRaid)) return NO;
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastRaidBossMs);
+    if (last > 0 && now - last < 6000LL) return NO;
+    atomic_store(&sLastRaidBossMs, now);
+    return YES;
+}
+
+BOOL IMAutoRaidMayClaim(void) {
+    if (!atomic_load(&sAutoRaidClaimInbox)) return NO;
+    long long now = IMNowMs();
+    long long last = atomic_load(&sLastRaidClaimMs);
+    if (last > 0 && now - last < 10000LL) return NO;
+    atomic_store(&sLastRaidClaimMs, now);
+    return YES;
+}
+
+void IMPublishRaidBoss(int hp, int max, int battleIndex) {
+    atomic_store(&sBossHP, hp);
+    atomic_store(&sBossMax, max);
+    atomic_store(&sBossBattleIndex, battleIndex);
+    atomic_store(&sBossSeenMs, IMNowMs());
+}
+
+void IMPublishRaidAttempts(int common, int bonus, int premium) {
+    atomic_store(&sPipsCommon, common);
+    atomic_store(&sPipsBonus, bonus);
+    atomic_store(&sPipsPremium, premium);
+}
+
+IMRaidSnapshot IMReadRaid(void) {
+    IMRaidSnapshot s;
+    long long seen = atomic_load(&sBossSeenMs);
+    s.bossHP          = atomic_load(&sBossHP);
+    s.bossMax         = atomic_load(&sBossMax);
+    s.battleIndex     = atomic_load(&sBossBattleIndex);
+    s.attemptsCommon  = atomic_load(&sPipsCommon);
+    s.attemptsBonus   = atomic_load(&sPipsBonus);
+    s.attemptsPremium = atomic_load(&sPipsPremium);
+    s.stale           = (seen <= 0) || (IMNowMs() - seen > 15000LL);
+    return s;
 }
 
 static atomic_llong sFightStartedMs;

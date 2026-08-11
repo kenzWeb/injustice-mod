@@ -44,6 +44,39 @@
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
 
+#define RVA_SoloRaidPopulateSummary 0x1FFEC44
+#define RVA_RaidSummarySetData      0x1E4C578
+#define RVA_RaidSummaryStartClicked 0x1E4C0DC
+#define RVA_RaidSelectBoss          0x1F69B64
+#define RVA_RaidStartBattleClicked  0x1F68838
+#define RVA_InboxCreateMessageData  0x1E9B244
+
+#define VT_RaidCanFight             0x658
+#define VT_RaidStartBattle          0x660
+#define VT_RaidUpdateSubBosses      0x6B0
+
+#define OFF_RaidBossActors          0x4A0
+#define OFF_RaidSelectedBoss        0x4B8
+#define OFF_RaidInfoPanel           0x568
+#define OFF_RaidRootPanel           0x558
+#define OFF_RaidRootSummaryWindow   0x370
+#define OFF_RaidSummaryData         0x338
+#define OFF_RaidSummaryFightButton  0x358
+#define OFF_RaidSummaryDataEnemy    0x338
+#define OFF_RaidSummaryDataHealth   0x344
+#define OFF_RaidSummaryDataMax      0x348
+
+#define OFF_RaidBossBattleIndex     0x30
+#define OFF_RaidBossHealthCurrent   0xB4
+#define OFF_RaidBossHealthMax       0xB8
+
+#define OFF_RaidInfoPipsBox         0x370
+#define OFF_PipsCommon              0x34C
+#define OFF_PipsBonus               0x350
+#define OFF_PipsPremium             0x354
+
+#define OFF_InboxClaimAllButton     0x3C0
+
 #define OFF_CurrentEnemy            0x500
 #define OFF_CurrentHealth           0x4E4
 #define OFF_MaxHealth               0x4E8
