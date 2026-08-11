@@ -31,6 +31,8 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 @property (nonatomic, strong) IMValueRow        *defenseRow;
 @property (nonatomic, strong) IMValueRow        *fixedRow;
 @property (nonatomic, strong) IMValueRow        *campaignRow;
+@property (nonatomic, strong) IMValueRow        *raidRow;
+@property (nonatomic, strong) UILabel           *raidStatus;
 @property (nonatomic, strong) NSTimer           *ticker;
 @property (nonatomic, weak)   UIWindow          *previousKeyWindow;
 @property (nonatomic, assign) CGFloat            contentHeight;
@@ -213,6 +215,38 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [traceRow addSubview:self.trace];
     [builder addSeparator];
 
+    [builder addSwitchRow:@"Авто-фарм соло-рейдов"
+                   target:self action:@selector(onAutoRaid:) accent:YES];
+    self.raidRow = [builder addValueRow:@"Длительность боя, сек"
+                                 target:self
+                            fieldAction:@selector(onRaidDelayField:)
+                           sliderAction:@selector(onRaidDelaySlider:)
+                                  value:IMAutoRaidDelay()
+                               maxValue:60.0
+                               decimals:YES];
+    [builder addCaption:@"открой сводку по боссу — дальше сам; "
+                         "стоп, когда кончаются попытки"];
+
+    UIView *raidRow = [builder addCustomRowOfHeight:34];
+    self.raidStatus = [[UILabel alloc] initWithFrame:
+        CGRectMake(IMPanelPadding, 4, IMPanelWidth - IMPanelPadding * 2, 26)];
+    self.raidStatus.numberOfLines = 1;
+    self.raidStatus.font = [UIFont monospacedDigitSystemFontOfSize:10
+                                                            weight:UIFontWeightRegular];
+    self.raidStatus.textColor = IMColorDim();
+    self.raidStatus.text = @"BOSS —   попытки —";
+    [raidRow addSubview:self.raidStatus];
+
+    [builder addSwitchRow:@"Игнорировать попытки рейда"
+                   target:self action:@selector(onRaidIgnoreGates:) accent:YES];
+    [builder addCaption:@"снимает клиентские замки; попытки считает сервер — "
+                         "если откажет, выкинет в главное меню"];
+
+    [builder addSwitchRow:@"Забирать награды из почты"
+                   target:self action:@selector(onAutoClaim:) accent:NO];
+    [builder addCaption:@"нажимает «забрать всё», когда почта открыта"];
+    [builder addSeparator];
+
     [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
     [builder addButtonRow:@"Восстановить HP" target:self action:@selector(onHeal)];
     [builder addSwitchRow:@"HP на экране"
@@ -233,7 +267,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addSwitchRow:@"Авто-фарм Соло-рейд"
                    target:self action:@selector(onAutoSoloRaid:) accent:YES];
     [builder addCaption:@"автоматически проходит боссов соло-рейда"];
-    [builder addButtonRow:@"Запустить фарм рейда" target:self action:@selector(onStartSoloRaidFarm)];
     [builder addSeparator];
 
     self.loadButtons = [builder addButtonTrioRow:@"Загрузить пресет"
@@ -401,6 +434,23 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onCampaignDelayField:(UITextField *)sender {
     [self applyCampaignDelay:[self parseField:sender]];
 }
+
+- (void)onAutoRaid:(UISwitch *)sender { IMSetAutoRaid(sender.isOn); }
+- (void)onRaidIgnoreGates:(UISwitch *)sender { IMSetRaidIgnoreGates(sender.isOn); }
+- (void)onAutoClaim:(UISwitch *)sender { IMSetAutoRaidClaimInbox(sender.isOn); }
+
+- (void)applyRaidDelay:(double)value {
+    IMSetAutoRaidDelay(value);
+    double applied = IMAutoRaidDelay();
+    self.raidRow.field.text = [NSString stringWithFormat:@"%.2f", applied];
+    self.raidRow.slider.value =
+        (float)MIN(applied, (double)self.raidRow.slider.maximumValue);
+}
+
+- (void)onRaidDelaySlider:(UISlider *)sender { [self applyRaidDelay:sender.value]; }
+- (void)onRaidDelayField:(UITextField *)sender {
+    [self applyRaidDelay:[self parseField:sender]];
+}
 - (void)onBypassVPNCheck:(UISwitch *)sender { IMSetBypassVPNCheck(sender.isOn); }
 
 - (void)onCopyTapjoyURL {
@@ -423,14 +473,6 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 
 - (void)onAutoSoloRaid:(UISwitch *)sender {
     /* TODO: включить/выключить авто-фарм соло-рейда */
-}
-
-- (void)onStartSoloRaidFarm {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Авто-фарм Соло-рейд"
-                                                                   message:@"Функция в разработке. Зайдите на экран соло-рейда и нажмите ещё раз."
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)onPresetSave:(UIButton *)sender {
@@ -574,15 +616,24 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     }
 
     self.trace.text = [NSString stringWithFormat:
-        @"map%d sum%d press%d pre%d fight%d kill%d",
+        @"map%d sum%d press%d pre%d fight%d kill%d rs%d rg%d cl%d",
         IMTraceValue(IMTraceChapterInit), IMTraceValue(IMTraceSummaryShown),
         IMTraceValue(IMTraceSummaryPressed), IMTraceValue(IMTracePreFightView),
-        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill)];
+        IMTraceValue(IMTraceFightStarted), IMTraceValue(IMTraceKill),
+        IMTraceValue(IMTraceRaidSummary), IMTraceValue(IMTraceRaidStarted),
+        IMTraceValue(IMTraceRaidClaim)];
 
     self.readout.text = health.stale
         ? @"YOU    —\nENEMY  —"
         : [NSString stringWithFormat:@"YOU    %d / %d\nENEMY  %d / %d",
            health.playerHP, health.playerMax, health.enemyHP, health.enemyMax];
+
+    IMRaidSnapshot raid = IMReadRaid();
+    int attempts = raid.attemptsCommon + raid.attemptsBonus + raid.attemptsPremium;
+    self.raidStatus.text = raid.stale
+        ? [NSString stringWithFormat:@"BOSS —   попытки %d", attempts]
+        : [NSString stringWithFormat:@"BOSS %d / %d  бой %d  попытки %d",
+           raid.bossHP, raid.bossMax, raid.battleIndex, attempts];
 }
 
 @end

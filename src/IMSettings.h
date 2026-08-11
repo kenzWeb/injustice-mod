@@ -67,6 +67,35 @@ void IMNoteFightStarted(void);
 void IMNoteFightEnded(void);
 BOOL IMFightStartedRecently(void);
 
+BOOL IMAutoRaid(void);
+void IMSetAutoRaid(BOOL on);
+
+BOOL IMAutoRaidClaimInbox(void);
+void IMSetAutoRaidClaimInbox(BOOL on);
+
+double IMAutoRaidDelay(void);
+void IMSetAutoRaidDelay(double seconds);
+
+BOOL IMAutoRaidMayStartBoss(void);
+BOOL IMAutoRaidMayClaim(void);
+
+BOOL IMRaidIgnoreGates(void);
+void IMSetRaidIgnoreGates(BOOL on);
+
+typedef struct {
+    int  bossHP;
+    int  bossMax;
+    int  battleIndex;
+    int  attemptsCommon;
+    int  attemptsBonus;
+    int  attemptsPremium;
+    BOOL stale;
+} IMRaidSnapshot;
+
+void IMPublishRaidBoss(int hp, int max, int battleIndex);
+void IMPublishRaidAttempts(int common, int bonus, int premium);
+IMRaidSnapshot IMReadRaid(void);
+
 typedef enum {
     IMTraceChapterInit = 0,
     IMTraceSummaryShown,
@@ -74,6 +103,9 @@ typedef enum {
     IMTracePreFightView,
     IMTraceFightStarted,
     IMTraceKill,
+    IMTraceRaidSummary,
+    IMTraceRaidStarted,
+    IMTraceRaidClaim,
     IMTraceCount
 } IMTraceEvent;
 
