@@ -3,6 +3,7 @@
 #import "IMLog.h"
 #import "Offsets.h"
 #import <stdint.h>
+#import <dispatch/dispatch.h>
 
 // This build uses case-preserving FName: 12 bytes {ComparisonIndex, DisplayIndex, Number}.
 typedef struct { uint32_t part[3]; } IMUEName;
@@ -27,17 +28,22 @@ static inline void *IMVSlot(void *obj, uintptr_t byteOffset) {
 // The solo-raid manager is a subsystem-style UObject reachable without args.
 static void *IMWorldContext(void) {
     IMGetMgrFn get = (IMGetMgrFn)IMRuntimeAddress(RVA_GetSoloRaidManager);
-    return get ? get() : NULL;
+    if (!get) { IMLog("cheatmgr: RVA_GetSoloRaidManager unresolved"); return NULL; }
+    IMLog("cheatmgr: calling GetSoloRaidManager fn=%p", (void *)get);
+    void *m = get();
+    IMLog("cheatmgr: GetSoloRaidManager -> %p", m);
+    return m;
 }
 
 void *IMCheatEnsureManager(void) {
     void *cached = sCheatManager;
-    if (cached) return cached;
+    if (cached) { IMLog("cheatmgr: cached mgr=%p", cached); return cached; }
 
     void *ctx = IMWorldContext();
     if (!ctx) { IMLog("cheatmgr: no world context (open a solo-raid screen once)"); return NULL; }
 
     IMGetPCFn getPC = (IMGetPCFn)IMRuntimeAddress(RVA_GetPlayerController);
+    IMLog("cheatmgr: calling GetPlayerController ctx=%p fn=%p", ctx, (void *)getPC);
     void *pc = getPC ? getPC(ctx, 0) : NULL;
     if (!pc) { IMLog("cheatmgr: GetPlayerController returned null"); return NULL; }
     IMLog("cheatmgr: pc=%p", pc);
@@ -52,16 +58,19 @@ void *IMCheatEnsureManager(void) {
 
     IMStaticClassFn staticClass =
         (IMStaticClassFn)IMRuntimeAddress(RVA_FrontendCheatMgrStaticClass);
+    IMLog("cheatmgr: calling StaticClass fn=%p", (void *)staticClass);
     void *cls = staticClass ? staticClass() : NULL;
     if (!cls) { IMLog("cheatmgr: StaticClass null"); return NULL; }
+    IMLog("cheatmgr: cls=%p", cls);
 
     // pc->CheatClass = UFrontendCheatManager::StaticClass()
     *(void **)((uintptr_t)pc + OFF_PCCheatClass) = cls;
 
     // pc->EnableCheats() — the engine constructs & inits the manager with pc as Outer.
     IMEnableCheatsFn enableCheats = (IMEnableCheatsFn)IMVSlot(pc, VT_EnableCheats);
-    IMLog("cheatmgr: calling EnableCheats fn=%p cls=%p", (void *)enableCheats, cls);
+    IMLog("cheatmgr: calling EnableCheats fn=%p", (void *)enableCheats);
     enableCheats(pc);
+    IMLog("cheatmgr: EnableCheats returned");
 
     void *mgr = *(void **)((uintptr_t)pc + OFF_PCCheatManager);
     IMLog("cheatmgr: pc->CheatManager after EnableCheats=%p", mgr);
@@ -73,16 +82,23 @@ static void *IMFindUFunction(void *obj, const char *name) {
     IMFNameCtorFn nameCtor = (IMFNameCtorFn)IMRuntimeAddress(RVA_FNameCtor);
     if (!nameCtor) return NULL;
     IMUEName fn = {{0, 0, 0}};
+    IMLog("cheatmgr: FName ctor fn=%p name=%s", (void *)nameCtor, name);
     nameCtor(&fn, name, 1 /* FNAME_Add: returns existing if present */);
+    IMLog("cheatmgr: FName -> idx=%u disp=%u num=%u", fn.part[0], fn.part[1], fn.part[2]);
 
     IMFindFunctionFn find = (IMFindFunctionFn)IMVSlot(obj, VT_FindFunction);
+    IMLog("cheatmgr: FindFunction fn=%p obj=%p", (void *)find, obj);
     void *func = find(obj, fn);
-    IMLog("cheatmgr: FindFunction(%s) idx=%u -> %p", name, fn.part[0], func);
+    IMLog("cheatmgr: FindFunction(%s) -> %p", name, func);
     return func;
 }
 
-BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex) {
-    // Negative => pull the last-seen battle coordinates from the solo-raid manager.
+// Runs on the main (game) queue — never straight from the UIKit touch handler,
+// so the engine is at a clean point when we construct objects / ProcessEvent.
+static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex) {
+    IMLog("cheatmgr: === claim work begin (diff=%d level=%d boss=%d) ===",
+          difficultyIndex, levelIndex, bossIndex);
+
     if (difficultyIndex < 0 || levelIndex < 0 || bossIndex < 0) {
         void *srm = IMWorldContext();
         if (srm) {
@@ -95,10 +111,10 @@ BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex
     }
 
     void *mgr = IMCheatEnsureManager();
-    if (!mgr) return NO;
+    if (!mgr) { IMLog("cheatmgr: abort — no manager"); return; }
 
     void *func = IMFindUFunction(mgr, "ClaimSoloRaidBossRewards");
-    if (!func) { IMLog("cheatmgr: UFunction not found"); return NO; }
+    if (!func) { IMLog("cheatmgr: abort — UFunction not found"); return; }
 
     // UFUNCTION param layout: { int32 difficultyIndex; int32 levelIndex; int32 bossIndex; }
     struct { int32_t diff; int32_t level; int32_t boss; } params = {
@@ -106,9 +122,19 @@ BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex
     };
 
     IMProcessEventFn pe = (IMProcessEventFn)IMVSlot(mgr, VT_ProcessEvent);
-    IMLog("cheatmgr: ProcessEvent mgr=%p func=%p diff=%d level=%d boss=%d",
-          mgr, func, difficultyIndex, levelIndex, bossIndex);
+    IMLog("cheatmgr: ProcessEvent pe=%p mgr=%p func=%p", (void *)pe, mgr, func);
     pe(mgr, func, &params);
-    IMLog("cheatmgr: ProcessEvent returned");
-    return YES;
+    IMLog("cheatmgr: === ProcessEvent returned OK ===");
+}
+
+BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex) {
+    // Defer the engine work onto the main/game queue (the same context the
+    // auto-farm uses to call game functions). Calling these directly from the
+    // UIKit touch handler re-enters the engine mid-event and crashes.
+    IMLog("cheatmgr: claim requested (queued) diff=%d level=%d boss=%d",
+          difficultyIndex, levelIndex, bossIndex);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IMCheatClaimWork(difficultyIndex, levelIndex, bossIndex);
+    });
+    return YES;  // "queued" — real outcome is in the log
 }

@@ -439,14 +439,13 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onRaidIgnoreGates:(UISwitch *)sender { IMSetRaidIgnoreGates(sender.isOn); }
 
 - (void)onClaimBoss {
-    BOOL sent = IMCheatClaimSoloRaidBoss(-1, -1, -1);
-    NSString *title = sent ? @"ProcessEvent вызван" : @"Конструкция не удалась";
-    NSString *msg = sent
-        ? @"UFrontendCheatManager сконструирован, ClaimSoloRaidBossRewards вызван "
-           "через ProcessEvent по кэшированному бою. ТЕСТ: проверь почту, затем перезайди "
-           "в игру — если награда осталась, сервер её принял. Смотри лог."
-        : @"Не удалось: cheat-менеджер не создан (нет world-context или EnableCheats "
-           "не сработал в retail-сборке). Зайди на экран соло-рейда и нажми снова. Смотри лог.";
+    IMCheatClaimSoloRaidBoss(-1, -1, -1);
+    NSString *title = @"Запрос поставлен в очередь";
+    NSString *msg =
+        @"Конструкция cheat-менеджера и вызов ClaimSoloRaidBossRewards выполняются "
+         "на игровом потоке. Результат — в логе (кнопка «Скопировать лог»): ищи строки "
+         "«cheatmgr: ...». Если дошло до «ProcessEvent returned OK» — проверь почту и "
+         "перезайди в игру, чтобы понять, принял ли сервер.";
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                    message:msg
                                                             preferredStyle:UIAlertControllerStyleAlert];
