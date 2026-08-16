@@ -6,6 +6,7 @@
 #import "IMTheme.h"
 #import "IMLog.h"
 #import "IMHooks.h"
+#import "IMCheatManager.h"
 #import <math.h>
 
 static const CGFloat kBallSize = 46.0;
@@ -438,12 +439,14 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
 - (void)onRaidIgnoreGates:(UISwitch *)sender { IMSetRaidIgnoreGates(sender.isOn); }
 
 - (void)onClaimBoss {
-    BOOL sent = IMTriggerClaimSoloRaidBoss(-1, -1, -1);
-    NSString *title = sent ? @"Запрос отправлен" : @"Менеджер не пойман";
+    BOOL sent = IMCheatClaimSoloRaidBoss(-1, -1, -1);
+    NSString *title = sent ? @"ProcessEvent вызван" : @"Конструкция не удалась";
     NSString *msg = sent
-        ? @"ClaimSoloRaidBossRewards вызван по текущему бою. Награду начисляет сервер — "
-           "если босс у него не числится убитым, в почте ничего не появится. Смотри лог."
-        : @"USoloRaidManager ещё не пойман. Зайди на экран рейда и нажми снова.";
+        ? @"UFrontendCheatManager сконструирован, ClaimSoloRaidBossRewards вызван "
+           "через ProcessEvent по кэшированному бою. ТЕСТ: проверь почту, затем перезайди "
+           "в игру — если награда осталась, сервер её принял. Смотри лог."
+        : @"Не удалось: cheat-менеджер не создан (нет world-context или EnableCheats "
+           "не сработал в retail-сборке). Зайди на экран соло-рейда и нажми снова. Смотри лог.";
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                    message:msg
                                                             preferredStyle:UIAlertControllerStyleAlert];

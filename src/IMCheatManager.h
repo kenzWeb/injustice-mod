@@ -1,0 +1,23 @@
+#pragma once
+#import <Foundation/Foundation.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Constructs (once, cached) a real UFrontendCheatManager via the game's own
+// APlayerController::EnableCheats, then invokes the ClaimSoloRaidBossRewards
+// UFUNCTION through UObject::ProcessEvent — the ABI-safe path.
+//
+// Returns YES if the cheat manager was constructed and ProcessEvent was called
+// (this does NOT mean the server granted rewards — that is exactly what the
+// on-device test observes). NO means construction failed (see log for stage).
+BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex);
+
+// Diagnostic: force (re)construction and report which stage reached, for the
+// test build. Fills nothing; logs via IMLog. Returns the manager pointer or NULL.
+void *IMCheatEnsureManager(void);
+
+#ifdef __cplusplus
+}
+#endif

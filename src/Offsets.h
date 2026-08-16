@@ -93,5 +93,17 @@
 
 #define VT_IsPlayerCharacter        0x9A0
 
+// --- UFrontendCheatManager construction (ProcessEvent path) ---
+// Found via static vtable reconstruction of __DATA_CONST,__const (5073 vtables).
+#define RVA_FrontendCheatMgrStaticClass 0x2163B90  // UFrontendCheatManager::StaticClass() -> UClass*
+#define RVA_GetPlayerController         0x37F9BB4  // UGameplayStatics::GetPlayerController real impl (worldCtx, index)
+#define RVA_FNameCtor                   0x24C6268  // FName::FName(FName* out, const char* str, EFindName) (12-byte FName)
+#define VT_ProcessEvent                 0x228      // UObject vtable slot (default impl RVA 0x25FEBB0, 0 direct callers)
+#define VT_FindFunction                 0x160      // UObject vtable slot (reads this->Class +0x10, dispatches FindFunctionByName)
+#define VT_EnableCheats                 0xA88      // APlayerController vtable slot (constructs CheatManager)
+#define OFF_UObjectClass                0x10       // UObject::ClassPrivate
+#define OFF_PCCheatManager              0x350      // APlayerController::CheatManager
+#define OFF_PCCheatClass                0x358      // APlayerController::CheatClass (TSubclassOf)
+
 #define SEG_TextEnd                 0x4B30000
 #define SEG_ImageEnd                0x661C000
