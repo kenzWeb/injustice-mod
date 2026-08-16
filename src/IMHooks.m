@@ -411,6 +411,7 @@ static void IMHookSummaryWindowShown(void *window) {
 
     sSummaryWindowSeenMs = IMNowMillis();
     sSummaryWindow = window;
+    IMCheatNoteWorldContext(window);
     IMLog("summary shown window=%p gen=%d", window, sNavGeneration);
     sSummaryBattleValid = NO;
 
@@ -481,6 +482,7 @@ static IMLevelActorFn sOrigLevelActor;
 static void IMCaptureCampaignMenu(void *menu) {
     if (!menu) return;
     sCampaignMenu = menu;
+    IMCheatNoteWorldContext(menu);
     IMTraceBump(IMTraceChapterInit);
 }
 
@@ -535,6 +537,7 @@ static void IMScheduleSummaryClick(int tick, int generation) {
 static void IMHookResultsTransitionIn(void *popup) {
     sOrigResultsTransitionIn(popup);
     IMLog("results shown popup=%p", popup);
+    IMCheatNoteWorldContext(popup);
     IMNoteFightEnded();
     sLastPlayerCharacter = NULL;
     sPreFightPressArmed = YES;
@@ -674,6 +677,7 @@ static void *IMHookInboxCreateMessageData(void *inbox, void *message) {
     if (!inbox) return result;
 
     sInboxMenu = inbox;
+    IMCheatNoteWorldContext(inbox);
     if (IMMasterOff() || !IMAutoRaidClaimInbox()) return result;
     if (!IMAutoRaidMayClaim()) return result;
 
@@ -780,6 +784,7 @@ static void IMHookDamageCharacter(void *attacker,
                                   bool *outLethalHit,
                                   bool *outArmorPierce,
                                   int32_t applyDamageMask) {
+    IMCheatNoteWorldContext(attacker ?: victim);  // any live combat actor
     if (!IMMasterOff() && victim && damageAmount > 0.0f) {
         if (!IMIsPlayerCharacter(victim)) {
             if (IMFixedDamageEnabled()) {

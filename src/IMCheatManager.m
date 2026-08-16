@@ -25,8 +25,19 @@ static inline void *IMVSlot(void *obj, uintptr_t byteOffset) {
     return vtable[byteOffset / sizeof(void *)];
 }
 
+// Called from game-thread hooks. Eagerly resolves and caches the (persistent)
+// PlayerController the first time any live UObject is seen, so a later button
+// press works from any screen — even one the tweak does not hook.
 void IMCheatNoteWorldContext(void *ctx) {
-    if (ctx) sWorldCtx = ctx;
+    if (!ctx) return;
+    sWorldCtx = ctx;
+    if (sCachedPC) return;
+    IMGetPCFn getPC = (IMGetPCFn)IMRuntimeAddress(RVA_GetPlayerController);
+    void *pc = getPC ? getPC(ctx, 0) : NULL;
+    if (pc) {
+        sCachedPC = pc;
+        IMLog("cheatmgr: PlayerController captured=%p (ctx=%p)", pc, ctx);
+    }
 }
 
 // A live world-context UObject captured on the game thread (a menu/window).
