@@ -4,6 +4,7 @@
 #import "IMDamage.h"
 #import "Offsets.h"
 #import "IMLog.h"
+#import "IMCheatManager.h"
 #import <substrate.h>
 #import <QuartzCore/QuartzCore.h>
 #import <stdint.h>
@@ -431,6 +432,7 @@ static void IMHookPreFightOpponentView(void *menu) {
     sNavGeneration++;
     sPreFightMenu = menu;
     sPreFightSeenMs = IMNowMillis();
+    IMCheatNoteWorldContext(menu);
     IMTraceBump(IMTracePreFightView);
     IMLog("prefight view menu=%p gen=%d armed=%d", menu, sNavGeneration, sPreFightPressArmed);
 
@@ -597,6 +599,7 @@ static void IMHookRaidPopulateSummary(void *menu, void *bossData) {
     if (!menu) return;
 
     sRaidSummarySeenMs = IMNowMillis();
+    IMCheatNoteWorldContext(menu);
     IMTraceBump(IMTraceRaidSummary);
 
     if (bossData) {

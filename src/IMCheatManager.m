@@ -10,13 +10,14 @@ typedef struct { uint32_t part[3]; } IMUEName;
 
 typedef void  *(*IMStaticClassFn)(void);
 typedef void  *(*IMGetPCFn)(void *worldCtx, int32_t playerIndex);
-typedef void  *(*IMGetMgrFn)(void);
 typedef void   (*IMFNameCtorFn)(IMUEName *out, const char *str, int findType);
 typedef void   (*IMEnableCheatsFn)(void *pc);
 typedef void  *(*IMFindFunctionFn)(void *obj, IMUEName name);
 typedef void   (*IMProcessEventFn)(void *obj, void *func, void *params);
 
 static void * volatile sCheatManager;
+static void * volatile sCachedPC;
+static void * volatile sWorldCtx;   // freshest live UObject captured by game hooks
 
 static inline void *IMVSlot(void *obj, uintptr_t byteOffset) {
     // obj -> vtable -> *(vtable + byteOffset)
@@ -24,28 +25,30 @@ static inline void *IMVSlot(void *obj, uintptr_t byteOffset) {
     return vtable[byteOffset / sizeof(void *)];
 }
 
-// A context-free live UObject to seed GetPlayerController's world context.
-// The solo-raid manager is a subsystem-style UObject reachable without args.
+void IMCheatNoteWorldContext(void *ctx) {
+    if (ctx) sWorldCtx = ctx;
+}
+
+// A live world-context UObject captured on the game thread (a menu/window).
 static void *IMWorldContext(void) {
-    IMGetMgrFn get = (IMGetMgrFn)IMRuntimeAddress(RVA_GetSoloRaidManager);
-    if (!get) { IMLog("cheatmgr: RVA_GetSoloRaidManager unresolved"); return NULL; }
-    IMLog("cheatmgr: calling GetSoloRaidManager fn=%p", (void *)get);
-    void *m = get();
-    IMLog("cheatmgr: GetSoloRaidManager -> %p", m);
-    return m;
+    return sWorldCtx;
 }
 
 void *IMCheatEnsureManager(void) {
     void *cached = sCheatManager;
     if (cached) { IMLog("cheatmgr: cached mgr=%p", cached); return cached; }
 
-    void *ctx = IMWorldContext();
-    if (!ctx) { IMLog("cheatmgr: no world context (open a solo-raid screen once)"); return NULL; }
+    void *pc = sCachedPC;
+    if (!pc) {
+        void *ctx = IMWorldContext();
+        if (!ctx) { IMLog("cheatmgr: no world context (navigate a game menu once)"); return NULL; }
 
-    IMGetPCFn getPC = (IMGetPCFn)IMRuntimeAddress(RVA_GetPlayerController);
-    IMLog("cheatmgr: calling GetPlayerController ctx=%p fn=%p", ctx, (void *)getPC);
-    void *pc = getPC ? getPC(ctx, 0) : NULL;
-    if (!pc) { IMLog("cheatmgr: GetPlayerController returned null"); return NULL; }
+        IMGetPCFn getPC = (IMGetPCFn)IMRuntimeAddress(RVA_GetPlayerController);
+        IMLog("cheatmgr: calling GetPlayerController ctx=%p fn=%p", ctx, (void *)getPC);
+        pc = getPC ? getPC(ctx, 0) : NULL;
+        if (!pc) { IMLog("cheatmgr: GetPlayerController returned null"); return NULL; }
+        sCachedPC = pc;
+    }
     IMLog("cheatmgr: pc=%p", pc);
 
     // If a manager already exists, reuse it.
@@ -96,19 +99,13 @@ static void *IMFindUFunction(void *obj, const char *name) {
 // Runs on the main (game) queue — never straight from the UIKit touch handler,
 // so the engine is at a clean point when we construct objects / ProcessEvent.
 static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex) {
+    // Negative indices default to 0 for this diagnostic run (we can no longer
+    // read them from the solo-raid manager — that getter crashes off-raid).
+    if (difficultyIndex < 0) difficultyIndex = 0;
+    if (levelIndex < 0)      levelIndex = 0;
+    if (bossIndex < 0)       bossIndex = 0;
     IMLog("cheatmgr: === claim work begin (diff=%d level=%d boss=%d) ===",
           difficultyIndex, levelIndex, bossIndex);
-
-    if (difficultyIndex < 0 || levelIndex < 0 || bossIndex < 0) {
-        void *srm = IMWorldContext();
-        if (srm) {
-            difficultyIndex = *(int32_t *)((uintptr_t)srm + OFF_MgrCachedDifficulty);
-            levelIndex      = *(int32_t *)((uintptr_t)srm + OFF_MgrCachedLevel);
-            bossIndex       = *(int32_t *)((uintptr_t)srm + OFF_MgrCachedBattleIndex);
-            IMLog("cheatmgr: cached battle diff=%d level=%d boss=%d",
-                  difficultyIndex, levelIndex, bossIndex);
-        }
-    }
 
     void *mgr = IMCheatEnsureManager();
     if (!mgr) { IMLog("cheatmgr: abort — no manager"); return; }

@@ -18,6 +18,11 @@ BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex
 // test build. Fills nothing; logs via IMLog. Returns the manager pointer or NULL.
 void *IMCheatEnsureManager(void);
 
+// Called from game-thread hooks with a live world-context UObject (a menu/window).
+// We cannot use GetSoloRaidManager for this — it dereferences a null global when
+// no raid is active and crashes. A captured live menu is always safe.
+void IMCheatNoteWorldContext(void *ctx);
+
 #ifdef __cplusplus
 }
 #endif
