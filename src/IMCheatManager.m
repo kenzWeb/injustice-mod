@@ -142,6 +142,35 @@ static void *IMFindUFunction(void *obj, const char *name) {
     return func;
 }
 
+// Diagnostic: dump the class object's pointer-sized fields so we can locate the
+// Children (UField* linked list) offset from real memory instead of guessing.
+static void IMDumpClassLayout(void *cls) {
+    if (!IMLooksLikeObject(cls)) { IMLog("cheatmgr: DUMP class invalid %p", cls); return; }
+    IMLog("cheatmgr: DUMP class=%p fields (off: value valid):", cls);
+    for (uintptr_t off = 0x28; off <= 0x140; off += 8) {
+        void *v = *(void **)((uintptr_t)cls + off);
+        IMLog("cheatmgr:   +0x%03lx = %p  valid=%d", (unsigned long)off, v, IMLooksLikeObject(v));
+    }
+}
+
+// Walk the class Children (UField* list via Next) and return the UFunction whose
+// body contains the exec pointer — matches by native Func, no FName needed.
+static void *IMFindFunctionByExec(void *cls, uintptr_t childrenOff, uintptr_t nextOff) {
+    void *target = IMRuntimeAddress(RVA_ClaimSoloRaidBossExec);
+    void *child = IMLooksLikeObject(cls) ? *(void **)((uintptr_t)cls + childrenOff) : NULL;
+    int guard = 0;
+    while (IMLooksLikeObject(child) && guard++ < 4000) {
+        for (uintptr_t o = 0; o <= 0xE0; o += 8) {
+            if (*(void **)((uintptr_t)child + o) == target) {
+                IMLog("cheatmgr: matched UFunction=%p (Func at +0x%lx)", child, (unsigned long)o);
+                return child;
+            }
+        }
+        child = *(void **)((uintptr_t)child + nextOff);
+    }
+    return NULL;
+}
+
 // Runs on the main (game) queue — never straight from the UIKit touch handler,
 // so the engine is at a clean point when we construct objects / ProcessEvent.
 static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex) {
@@ -157,6 +186,20 @@ static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex)
     if (!mgr) { IMLog("cheatmgr: abort — no manager"); return; }
 
     void *func = IMFindUFunction(mgr, "ClaimSoloRaidBossRewards");
+    if (!func) {
+        // FName/FindFunction path failed — fall back to walking the class function
+        // list and matching by the exec pointer. First dump the class layout so we
+        // can confirm the Children offset from real memory.
+        void *cls = *(void **)((uintptr_t)mgr + OFF_UObjectClass);
+        IMDumpClassLayout(cls);
+        // Try common UE4.25 layouts (Children @ 0x48/0x50, Next @ 0x28).
+        const uintptr_t childCands[] = {0x48, 0x50, 0x40, 0x128};
+        for (unsigned c = 0; c < sizeof(childCands)/sizeof(childCands[0]) && !func; c++) {
+            func = IMFindFunctionByExec(cls, childCands[c], 0x28);
+            if (func) IMLog("cheatmgr: exec-walk hit with childrenOff=0x%lx",
+                            (unsigned long)childCands[c]);
+        }
+    }
     if (!func) { IMLog("cheatmgr: abort — UFunction not found"); return; }
 
     // UFUNCTION param layout: { int32 difficultyIndex; int32 levelIndex; int32 bossIndex; }
