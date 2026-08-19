@@ -77,6 +77,14 @@ void *IMCheatEnsureManager(void) {
     // does NOT, and the field can also hold garbage — both must be rejected.
     void *existing = *(void **)((uintptr_t)pc + OFF_PCCheatManager);
     IMLog("cheatmgr: existing pc->CheatManager=%p valid=%d", existing, IMLooksLikeObject(existing));
+    if (IMLooksLikeObject(existing)) {
+        // DIAGNOSTIC: is FindFunction itself working? CheatHelp exists on the
+        // base UBaseCheatManager, so it MUST resolve if the mechanism is sound.
+        void *ecls = *(void **)((uintptr_t)existing + OFF_UObjectClass);
+        void *help = IMFindUFunction(existing, "CheatHelp");
+        IMLog("cheatmgr: DIAG existing class=%p  CheatHelp=%p (mechanism ok if non-null)",
+              ecls, help);
+    }
     if (IMManagerHasClaim(existing)) {
         IMLog("cheatmgr: reusing valid frontend manager=%p", existing);
         sCheatManager = existing;
@@ -102,6 +110,10 @@ void *IMCheatEnsureManager(void) {
     void *mgr = *(void **)((uintptr_t)pc + OFF_PCCheatManager);
     IMLog("cheatmgr: pc->CheatManager after EnableCheats=%p valid=%d", mgr, IMLooksLikeObject(mgr));
     if (!IMLooksLikeObject(mgr)) { IMLog("cheatmgr: construction failed"); return NULL; }
+    // DIAGNOSTIC: did EnableCheats honour our CheatClass, or hardcode the base?
+    void *mcls = *(void **)((uintptr_t)mgr + OFF_UObjectClass);
+    IMLog("cheatmgr: DIAG new mgr class=%p  frontendCls=%p  match=%d",
+          mcls, cls, mcls == cls);
     sCheatManager = mgr;
     return mgr;
 }
