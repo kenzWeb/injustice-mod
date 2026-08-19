@@ -144,30 +144,41 @@ static void *IMFindUFunction(void *obj, const char *name) {
 
 // Diagnostic: dump the class object's pointer-sized fields so we can locate the
 // Children (UField* linked list) offset from real memory instead of guessing.
+// Cheap "looks like a pointer" WITHOUT dereferencing (deref of a canonical but
+// unmapped value crashes). Just a canonical + plausible-range check.
+static inline int IMLooksLikePtr(void *v) {
+    uintptr_t p = (uintptr_t)v;
+    return p >= 0x100000000ULL && p < 0x0000300000000000ULL;
+}
+
 static void IMDumpClassLayout(void *cls) {
     if (!IMLooksLikeObject(cls)) { IMLog("cheatmgr: DUMP class invalid %p", cls); return; }
-    IMLog("cheatmgr: DUMP class=%p fields (off: value valid):", cls);
+    IMLog("cheatmgr: DUMP class=%p fields (off: value ptr?):", cls);
     for (uintptr_t off = 0x28; off <= 0x140; off += 8) {
         void *v = *(void **)((uintptr_t)cls + off);
-        IMLog("cheatmgr:   +0x%03lx = %p  valid=%d", (unsigned long)off, v, IMLooksLikeObject(v));
+        IMLog("cheatmgr:   +0x%03lx = %p  ptr=%d", (unsigned long)off, v, IMLooksLikePtr(v));
     }
 }
 
 // Walk the class Children (UField* list via Next) and return the UFunction whose
 // body contains the exec pointer — matches by native Func, no FName needed.
 static void *IMFindFunctionByExec(void *cls, uintptr_t childrenOff, uintptr_t nextOff) {
-    void *target = IMRuntimeAddress(RVA_ClaimSoloRaidBossExec);
-    void *child = IMLooksLikeObject(cls) ? *(void **)((uintptr_t)cls + childrenOff) : NULL;
+    const uintptr_t MASK = 0x0000FFFFFFFFFFFFULL;   // low 48 bits (ignore any PAC)
+    uintptr_t target = (uintptr_t)IMRuntimeAddress(RVA_ClaimSoloRaidBossExec) & MASK;
+    void *child = IMLooksLikePtr(cls) ? *(void **)((uintptr_t)cls + childrenOff) : NULL;
     int guard = 0;
-    while (IMLooksLikeObject(child) && guard++ < 4000) {
+    while (IMLooksLikePtr(child) && guard++ < 8000) {
         for (uintptr_t o = 0; o <= 0xE0; o += 8) {
-            if (*(void **)((uintptr_t)child + o) == target) {
-                IMLog("cheatmgr: matched UFunction=%p (Func at +0x%lx)", child, (unsigned long)o);
+            if ((*(uintptr_t *)((uintptr_t)child + o) & MASK) == target) {
+                IMLog("cheatmgr: matched UFunction=%p (Func at +0x%lx) after %d children",
+                      child, (unsigned long)o, guard);
                 return child;
             }
         }
         child = *(void **)((uintptr_t)child + nextOff);
     }
+    IMLog("cheatmgr: exec-walk childrenOff=0x%lx: scanned %d children, no match",
+          (unsigned long)childrenOff, guard);
     return NULL;
 }
 
@@ -192,13 +203,8 @@ static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex)
         // can confirm the Children offset from real memory.
         void *cls = *(void **)((uintptr_t)mgr + OFF_UObjectClass);
         IMDumpClassLayout(cls);
-        // Try common UE4.25 layouts (Children @ 0x48/0x50, Next @ 0x28).
-        const uintptr_t childCands[] = {0x48, 0x50, 0x40, 0x128};
-        for (unsigned c = 0; c < sizeof(childCands)/sizeof(childCands[0]) && !func; c++) {
-            func = IMFindFunctionByExec(cls, childCands[c], 0x28);
-            if (func) IMLog("cheatmgr: exec-walk hit with childrenOff=0x%lx",
-                            (unsigned long)childCands[c]);
-        }
+        // Children @ 0x48, Next @ 0x28 (confirmed from the class layout dump).
+        func = IMFindFunctionByExec(cls, 0x48, 0x28);
     }
     if (!func) { IMLog("cheatmgr: abort — UFunction not found"); return; }
 
