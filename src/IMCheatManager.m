@@ -10,7 +10,7 @@ typedef struct { uint32_t part[3]; } IMUEName;
 
 typedef void  *(*IMStaticClassFn)(void);
 typedef void  *(*IMGetPCFn)(void *worldCtx, int32_t playerIndex);
-typedef void   (*IMFNameCtorFn)(IMUEName *out, const char *str, int findType);
+typedef void   (*IMFNameCtorFn)(IMUEName *out, const uint16_t *str, int findType);
 typedef void   (*IMEnableCheatsFn)(void *pc);
 typedef void  *(*IMFindFunctionFn)(void *obj, IMUEName name);
 typedef void   (*IMProcessEventFn)(void *obj, void *func, void *params);
@@ -121,9 +121,18 @@ void *IMCheatEnsureManager(void) {
 static void *IMFindUFunction(void *obj, const char *name) {
     IMFNameCtorFn nameCtor = (IMFNameCtorFn)IMRuntimeAddress(RVA_FNameCtor);
     if (!nameCtor) return NULL;
+
+    // The FName ctor takes a UTF-16 (TCHAR) string, not UTF-8. ASCII names widen
+    // trivially (high byte 0). Passing char* produced a wrong hash -> wrong FName
+    // -> FindFunction never matched (even CheatHelp failed).
+    uint16_t wide[96];
+    int i = 0;
+    for (; name[i] && i < 95; i++) wide[i] = (uint16_t)(unsigned char)name[i];
+    wide[i] = 0;
+
     IMUEName fn = {{0, 0, 0}};
-    IMLog("cheatmgr: FName ctor fn=%p name=%s", (void *)nameCtor, name);
-    nameCtor(&fn, name, 1 /* FNAME_Add: returns existing if present */);
+    IMLog("cheatmgr: FName ctor fn=%p name=%s (utf16)", (void *)nameCtor, name);
+    nameCtor(&fn, wide, 1 /* FNAME_Add: returns existing if present */);
     IMLog("cheatmgr: FName -> idx=%u disp=%u num=%u", fn.part[0], fn.part[1], fn.part[2]);
 
     IMFindFunctionFn find = (IMFindFunctionFn)IMVSlot(obj, VT_FindFunction);
