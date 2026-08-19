@@ -15,6 +15,7 @@ InjusticeMod_FILES = \
     src/IMRuntime.m \
     src/IMDamage.m \
     src/IMHooks.m \
+    src/IMNetLog.xm \
     src/IMCheatManager.m \
     src/IMTheme.m \
     src/IMOverlayWindow.m \
