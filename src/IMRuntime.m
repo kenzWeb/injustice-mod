@@ -48,6 +48,15 @@ void *IMRuntimeAddress(uintptr_t rva) {
 const void *IMRuntimeImageBase(void) { return sImageBase; }
 uintptr_t IMRuntimeSlide(void) { return sSlide; }
 
+BOOL IMLooksLikeObject(void *obj) {
+    uintptr_t p = (uintptr_t)obj;
+    if (p < 0x100000000ULL) return NO;                 // null / too small
+    if (p & 0xFFFF000000000000ULL) return NO;          // non-canonical — don't deref
+    uintptr_t vptr = *(uintptr_t *)p;                  // safe-ish to read now
+    if (vptr & 0xFFFF000000000000ULL) return NO;
+    return vptr >= sTextLo && vptr < sImageHi;          // vtable inside game image
+}
+
 BOOL IMIsPlayerCharacter(void *character) {
     if (!character) return NO;
     uintptr_t vptr = *(uintptr_t *)character;

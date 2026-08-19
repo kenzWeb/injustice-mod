@@ -45,6 +45,15 @@ static void *IMWorldContext(void) {
     return sWorldCtx;
 }
 
+static void *IMFindUFunction(void *obj, const char *name);
+
+// Does `mgr` actually expose ClaimSoloRaidBossRewards? (i.e. is it a
+// UFrontendCheatManager and not the base UBaseCheatManager the game ships.)
+static BOOL IMManagerHasClaim(void *mgr) {
+    if (!IMLooksLikeObject(mgr)) return NO;
+    return IMFindUFunction(mgr, "ClaimSoloRaidBossRewards") != NULL;
+}
+
 void *IMCheatEnsureManager(void) {
     void *cached = sCheatManager;
     if (cached) { IMLog("cheatmgr: cached mgr=%p", cached); return cached; }
@@ -60,34 +69,39 @@ void *IMCheatEnsureManager(void) {
         if (!pc) { IMLog("cheatmgr: GetPlayerController returned null"); return NULL; }
         sCachedPC = pc;
     }
+    if (!IMLooksLikeObject(pc)) { IMLog("cheatmgr: pc=%p invalid vtable, abort", pc); return NULL; }
     IMLog("cheatmgr: pc=%p", pc);
 
-    // If a manager already exists, reuse it.
+    // Reuse an existing manager ONLY if it is a valid object that actually has
+    // ClaimSoloRaidBossRewards. The game ships a base UBaseCheatManager which
+    // does NOT, and the field can also hold garbage — both must be rejected.
     void *existing = *(void **)((uintptr_t)pc + OFF_PCCheatManager);
-    if (existing) {
-        IMLog("cheatmgr: reusing existing pc->CheatManager=%p", existing);
+    IMLog("cheatmgr: existing pc->CheatManager=%p valid=%d", existing, IMLooksLikeObject(existing));
+    if (IMManagerHasClaim(existing)) {
+        IMLog("cheatmgr: reusing valid frontend manager=%p", existing);
         sCheatManager = existing;
         return existing;
     }
 
+    // Force-construct a UFrontendCheatManager: set the class, clear the slot,
+    // let EnableCheats (which the game already uses — cheats are live here) build it.
     IMStaticClassFn staticClass =
         (IMStaticClassFn)IMRuntimeAddress(RVA_FrontendCheatMgrStaticClass);
-    IMLog("cheatmgr: calling StaticClass fn=%p", (void *)staticClass);
     void *cls = staticClass ? staticClass() : NULL;
     if (!cls) { IMLog("cheatmgr: StaticClass null"); return NULL; }
-    IMLog("cheatmgr: cls=%p", cls);
+    IMLog("cheatmgr: frontend cls=%p", cls);
 
-    // pc->CheatClass = UFrontendCheatManager::StaticClass()
-    *(void **)((uintptr_t)pc + OFF_PCCheatClass) = cls;
+    *(void **)((uintptr_t)pc + OFF_PCCheatClass)   = cls;
+    *(void **)((uintptr_t)pc + OFF_PCCheatManager) = NULL;  // force EnableCheats to recreate
 
-    // pc->EnableCheats() — the engine constructs & inits the manager with pc as Outer.
     IMEnableCheatsFn enableCheats = (IMEnableCheatsFn)IMVSlot(pc, VT_EnableCheats);
     IMLog("cheatmgr: calling EnableCheats fn=%p", (void *)enableCheats);
     enableCheats(pc);
     IMLog("cheatmgr: EnableCheats returned");
 
     void *mgr = *(void **)((uintptr_t)pc + OFF_PCCheatManager);
-    IMLog("cheatmgr: pc->CheatManager after EnableCheats=%p", mgr);
+    IMLog("cheatmgr: pc->CheatManager after EnableCheats=%p valid=%d", mgr, IMLooksLikeObject(mgr));
+    if (!IMLooksLikeObject(mgr)) { IMLog("cheatmgr: construction failed"); return NULL; }
     sCheatManager = mgr;
     return mgr;
 }
