@@ -4,6 +4,15 @@
 #import "Offsets.h"
 #import <stdint.h>
 #import <dispatch/dispatch.h>
+#import <mach/mach.h>
+
+// Safe memory read: returns NO for unmapped pages instead of crashing.
+static BOOL IMSafeRead(const void *addr, void *buf, size_t n) {
+    vm_size_t got = 0;
+    kern_return_t kr = vm_read_overwrite(mach_task_self(), (vm_address_t)addr,
+                                         (vm_size_t)n, (vm_address_t)buf, &got);
+    return kr == KERN_SUCCESS && got == n;
+}
 
 // This build uses case-preserving FName: 12 bytes {ComparisonIndex, DisplayIndex, Number}.
 typedef struct { uint32_t part[3]; } IMUEName;
@@ -160,25 +169,51 @@ static void IMDumpClassLayout(void *cls) {
     }
 }
 
-// Walk the class Children (UField* list via Next) and return the UFunction whose
-// body contains the exec pointer — matches by native Func, no FName needed.
-static void *IMFindFunctionByExec(void *cls, uintptr_t childrenOff, uintptr_t nextOff) {
-    const uintptr_t MASK = 0x0000FFFFFFFFFFFFULL;   // low 48 bits (ignore any PAC)
-    uintptr_t target = (uintptr_t)IMRuntimeAddress(RVA_ClaimSoloRaidBossExec) & MASK;
-    void *child = IMLooksLikePtr(cls) ? *(void **)((uintptr_t)cls + childrenOff) : NULL;
+static const uintptr_t IM_EXECMASK = 0x0000FFFFFFFFFFFFULL;   // low 48 bits (ignore PAC)
+
+// Walk cls->[childrenOff] following [+nextOff], scanning each node for the exec.
+// All reads go through IMSafeRead so wrong offsets never crash.
+static void *IMWalkChain(void *cls, uintptr_t childrenOff, uintptr_t nextOff,
+                         uintptr_t target, int *outLen) {
+    void *child = NULL;
+    if (!IMSafeRead((void *)((uintptr_t)cls + childrenOff), &child, 8)) { *outLen = 0; return NULL; }
     int guard = 0;
-    while (IMLooksLikePtr(child) && guard++ < 8000) {
-        for (uintptr_t o = 0; o <= 0xE0; o += 8) {
-            if ((*(uintptr_t *)((uintptr_t)child + o) & MASK) == target) {
-                IMLog("cheatmgr: matched UFunction=%p (Func at +0x%lx) after %d children",
-                      child, (unsigned long)o, guard);
+    while (IMLooksLikePtr(child) && guard < 8000) {
+        guard++;
+        uintptr_t node[0x1E];   // 0xF0 bytes of the child
+        if (!IMSafeRead(child, node, sizeof(node))) break;
+        for (unsigned i = 0; i < 0x1D; i++) {
+            if ((node[i] & IM_EXECMASK) == target) {
+                *outLen = guard;
+                IMLog("cheatmgr: MATCH UFunction=%p Func@+0x%x children=0x%lx next=0x%lx after %d",
+                      child, i * 8, (unsigned long)childrenOff, (unsigned long)nextOff, guard);
                 return child;
             }
         }
-        child = *(void **)((uintptr_t)child + nextOff);
+        child = (void *)node[nextOff / 8];
     }
-    IMLog("cheatmgr: exec-walk childrenOff=0x%lx: scanned %d children, no match",
-          (unsigned long)childrenOff, guard);
+    *outLen = guard;
+    return NULL;
+}
+
+// Probe several (childrenOff, nextOff) layouts; the correct one produces a long
+// chain and finds the exec. Reports each chain length so we can lock the offsets.
+static void *IMFindFunctionByExec(void *cls, uintptr_t childrenOffIgnored, uintptr_t nextOffIgnored) {
+    (void)childrenOffIgnored; (void)nextOffIgnored;
+    if (!IMLooksLikePtr(cls)) return NULL;
+    uintptr_t target = (uintptr_t)IMRuntimeAddress(RVA_ClaimSoloRaidBossExec) & IM_EXECMASK;
+    const uintptr_t childCands[] = {0x48, 0x50, 0x38, 0x30};
+    const uintptr_t nextCands[]  = {0x28, 0x30, 0x48, 0x50, 0xE0, 0x20};
+    for (unsigned ci = 0; ci < sizeof(childCands)/sizeof(childCands[0]); ci++) {
+        for (unsigned ni = 0; ni < sizeof(nextCands)/sizeof(nextCands[0]); ni++) {
+            int len = 0;
+            void *f = IMWalkChain(cls, childCands[ci], nextCands[ni], target, &len);
+            IMLog("cheatmgr: probe child=0x%lx next=0x%lx -> len=%d%s",
+                  (unsigned long)childCands[ci], (unsigned long)nextCands[ni],
+                  len, f ? " MATCH" : "");
+            if (f) return f;
+        }
+    }
     return NULL;
 }
 
