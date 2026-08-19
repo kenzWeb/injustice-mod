@@ -153,8 +153,8 @@ static inline int IMLooksLikePtr(void *v) {
 
 static void IMDumpClassLayout(void *cls) {
     if (!IMLooksLikeObject(cls)) { IMLog("cheatmgr: DUMP class invalid %p", cls); return; }
-    IMLog("cheatmgr: DUMP class=%p fields (off: value ptr?):", cls);
-    for (uintptr_t off = 0x28; off <= 0x140; off += 8) {
+    IMLog("cheatmgr: DUMP obj=%p fields (off: value ptr?):", cls);
+    for (uintptr_t off = 0x00; off <= 0x140; off += 8) {
         void *v = *(void **)((uintptr_t)cls + off);
         IMLog("cheatmgr:   +0x%03lx = %p  ptr=%d", (unsigned long)off, v, IMLooksLikePtr(v));
     }
@@ -203,6 +203,10 @@ static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex)
         // can confirm the Children offset from real memory.
         void *cls = *(void **)((uintptr_t)mgr + OFF_UObjectClass);
         IMDumpClassLayout(cls);
+        // Dump the first child (cls+0x48) so we can read the real Next/Func offsets.
+        void *child0 = *(void **)((uintptr_t)cls + 0x48);
+        IMLog("cheatmgr: --- first child @0x48 = %p ---", child0);
+        IMDumpClassLayout(child0);
         // Children @ 0x48, Next @ 0x28 (confirmed from the class layout dump).
         func = IMFindFunctionByExec(cls, 0x48, 0x28);
     }
