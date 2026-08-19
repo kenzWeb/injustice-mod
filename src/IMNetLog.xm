@@ -28,11 +28,31 @@ static BOOL IMNetIsNoise(NSString *host) {
 static NSString *IMNetBody(NSData *d) {
     if (d.length == 0) return @"(empty)";
     NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-    if (s.length) return s.length > 3000 ? [s substringToIndex:3000] : s;
+    if (s.length) return s.length > 4000 ? [s substringToIndex:4000] : s;
     const unsigned char *b = (const unsigned char *)d.bytes;
     NSMutableString *h = [NSMutableString stringWithFormat:@"(bin %lu) ", (unsigned long)d.length];
-    for (NSUInteger i = 0; i < MIN(d.length, (NSUInteger)200); i++) [h appendFormat:@"%02x", b[i]];
+    for (NSUInteger i = 0; i < MIN(d.length, (NSUInteger)400); i++) [h appendFormat:@"%02x", b[i]];
     return h;
+}
+
+static NSString *IMNetHeaders(NSDictionary *h) {
+    if (h.count == 0) return @"(none)";
+    NSMutableString *s = [NSMutableString string];
+    for (NSString *k in h) [s appendFormat:@"%@: %@ | ", k, h[k]];
+    return s;
+}
+
+// Log every distinct host once (including filtered) so the Hydra host is always
+// visible even if our noise filter is wrong.
+static void IMNetNoteHost(NSString *host) {
+    if (host.length == 0) return;
+    static NSMutableSet *seen; static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        if ([seen containsObject:host]) return;
+        [seen addObject:host];
+    }
+    IMLog("NET host seen: %s  (filtered=%d)", host.UTF8String, IMNetIsNoise(host));
 }
 
 %hook NSURLSession
@@ -40,19 +60,27 @@ static NSString *IMNetBody(NSData *d) {
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request
                             completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))handler {
     NSString *host = request.URL.host;
+    IMNetNoteHost(host);
     if (IMNetIsNoise(host)) return %orig;
 
     NSString *url = request.URL.absoluteString ?: @"?";
     NSString *method = request.HTTPMethod ?: @"GET";
-    IMLog("NET-> %s %s body=%s", method.UTF8String, url.UTF8String,
+    IMLog("NET-> %s %s\n    hdr: %s\n    body=%s", method.UTF8String, url.UTF8String,
+          IMNetHeaders(request.allHTTPHeaderFields).UTF8String,
           IMNetBody(request.HTTPBody).UTF8String);
+    if (!request.HTTPBody && request.HTTPBodyStream)
+        IMLog("NET-> (body is a stream — captured via setHTTPBodyStream hook)");
 
     if (!handler) return %orig;
     void (^wrap)(NSData *, NSURLResponse *, NSError *) =
         ^(NSData *data, NSURLResponse *resp, NSError *err) {
-            long code = [resp isKindOfClass:NSHTTPURLResponse.class]
-                            ? (long)[(NSHTTPURLResponse *)resp statusCode] : -1;
-            IMLog("NET<- [%ld] %s resp=%s", code, url.UTF8String, IMNetBody(data).UTF8String);
+            long code = -1; NSString *rh = @"";
+            if ([resp isKindOfClass:NSHTTPURLResponse.class]) {
+                code = (long)[(NSHTTPURLResponse *)resp statusCode];
+                rh = IMNetHeaders([(NSHTTPURLResponse *)resp allHeaderFields]);
+            }
+            IMLog("NET<- [%ld] %s\n    rhdr: %s\n    resp=%s", code, url.UTF8String,
+                  rh.UTF8String, IMNetBody(data).UTF8String);
             handler(data, resp, err);
         };
     return %orig(request, wrap);
@@ -60,6 +88,7 @@ static NSString *IMNetBody(NSData *d) {
 
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
     NSString *host = request.URL.host;
+    IMNetNoteHost(host);
     if (!IMNetIsNoise(host)) {
         IMLog("NET-> (delegate) %s %s body=%s",
               (request.HTTPMethod ?: @"GET").UTF8String,
@@ -67,6 +96,22 @@ static NSString *IMNetBody(NSData *d) {
               IMNetBody(request.HTTPBody).UTF8String);
     }
     return %orig;
+}
+
+%end
+
+// Capture the body plaintext at the moment it is set on the request — works
+// even when the send path is delegate-based (no completion handler to wrap).
+%hook NSMutableURLRequest
+
+- (void)setHTTPBody:(NSData *)body {
+    NSString *host = self.URL.host;
+    if ((host == nil || !IMNetIsNoise(host)) && body.length) {
+        IMLog("NET= setHTTPBody %s -> %s",
+              (self.URL.absoluteString ?: @"(url not yet set)").UTF8String,
+              IMNetBody(body).UTF8String);
+    }
+    %orig;
 }
 
 %end
