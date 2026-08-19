@@ -70,3 +70,32 @@ static NSString *IMNetBody(NSData *d) {
 }
 
 %end
+
+// --- WebSocket (Hydra realtime may run over this) ---------------------------
+static NSString *IMWSBody(NSURLSessionWebSocketMessage *m) {
+    if (m.type == NSURLSessionWebSocketMessageTypeData) return IMNetBody(m.data);
+    NSString *s = m.string ?: @"";
+    return s.length > 3000 ? [s substringToIndex:3000] : s;
+}
+
+%hook NSURLSessionWebSocketTask
+
+- (void)sendMessage:(NSURLSessionWebSocketMessage *)message
+  completionHandler:(void (^)(NSError *))handler {
+    IMLog("WS-> %s %s", self.currentRequest.URL.absoluteString.UTF8String ?: "?",
+          IMWSBody(message).UTF8String);
+    %orig;
+}
+
+- (void)receiveMessageWithCompletionHandler:(void (^)(NSURLSessionWebSocketMessage *, NSError *))handler {
+    void (^wrap)(NSURLSessionWebSocketMessage *, NSError *) =
+        ^(NSURLSessionWebSocketMessage *message, NSError *error) {
+            if (message) IMLog("WS<- %s %s",
+                               self.currentRequest.URL.absoluteString.UTF8String ?: "?",
+                               IMWSBody(message).UTF8String);
+            if (handler) handler(message, error);
+        };
+    %orig(wrap);
+}
+
+%end
