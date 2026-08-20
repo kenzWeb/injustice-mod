@@ -258,6 +258,25 @@ static void IMCheatClaimWork(int difficultyIndex, int levelIndex, int bossIndex)
     IMLog("cheatmgr: === ProcessEvent returned OK ===");
 }
 
+static void IMCheatRefreshPipsWork(void) {
+    void *mgr = IMCheatEnsureManager();
+    if (!mgr) { IMLog("cheatmgr: pips abort — no manager"); return; }
+
+    // No UFUNCTION args -> real impl is void func(this). Hand-call with the
+    // constructed cheat manager as `this`.
+    typedef void (*IMSimAdFn)(void *self);
+    IMSimAdFn fn = (IMSimAdFn)IMRuntimeAddress(RVA_CheatVideoForSoloRaidPips);
+    IMLog("cheatmgr: === refresh pips: calling SimIronSource fn=%p mgr=%p ===",
+          (void *)fn, mgr);
+    fn(mgr);
+    IMLog("cheatmgr: === refresh pips returned (check pip count + reload) ===");
+}
+
+void IMCheatRefreshSoloRaidPips(void) {
+    IMLog("cheatmgr: refresh pips requested (queued)");
+    dispatch_async(dispatch_get_main_queue(), ^{ IMCheatRefreshPipsWork(); });
+}
+
 BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex) {
     // Defer the engine work onto the main/game queue (the same context the
     // auto-farm uses to call game functions). Calling these directly from the

@@ -250,6 +250,9 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [builder addButtonRow:@"Забрать награду за босса"
                    target:self action:@selector(onClaimBoss)];
     [builder addCaption:@"прямой вызов ClaimSoloRaidBossRewards по текущему бою"];
+    [builder addButtonRow:@"Рефреш попыток (тест)"
+                   target:self action:@selector(onRefreshPips)];
+    [builder addCaption:@"симулирует рекламу за попытки; проверь счётчик + перезайди"];
     [builder addSeparator];
 
     [builder addButtonRow:@"Авто-победа" target:self action:@selector(onAutoWin)];
@@ -452,6 +455,18 @@ static const CGFloat kDefaultFixedDamageSliderMax = 20000.0;
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
+- (void)onRefreshPips {
+    IMCheatRefreshSoloRaidPips();
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Рефреш попыток отправлен"
+                         message:@"Симуляция рекламы за попытки выполнена на игровом потоке. "
+                                  "Проверь счётчик попыток соло-рейда, затем ПЕРЕЗАЙДИ в игру — "
+                                  "если попытки прибавились и остались, сервер принял. Смотри лог."
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)onAutoClaim:(UISwitch *)sender { IMSetAutoRaidClaimInbox(sender.isOn); }
 
 - (void)applyRaidDelay:(double)value {

@@ -14,6 +14,11 @@ extern "C" {
 // on-device test observes). NO means construction failed (see log for stage).
 BOOL IMCheatClaimSoloRaidBoss(int difficultyIndex, int levelIndex, int bossIndex);
 
+// Refresh solo-raid attempts (pips) by simulating an IronSource rewarded-video
+// completion — reuses the constructed UFrontendCheatManager and hand-calls the
+// no-arg cheat impl. TEST: does the server grant pips for the resulting request?
+void IMCheatRefreshSoloRaidPips(void);
+
 // Diagnostic: force (re)construction and report which stage reached, for the
 // test build. Fills nothing; logs via IMLog. Returns the manager pointer or NULL.
 void *IMCheatEnsureManager(void);

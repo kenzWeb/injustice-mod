@@ -43,6 +43,10 @@
 #define OFF_RequirementsUnmet       0x750
 #define RVA_ClaimSoloRaidBossRewards 0x1F9DE0C
 #define RVA_ClaimSoloRaidBossExec    0x215DC78  // UFunction::Func (exec thunk) for name lookup
+// CheatVideoForSoloRaidPipsSimulateIronSourceResponse real impl (no UFUNCTION args
+// -> hand-callable as void func(this)). Simulates an IronSource rewarded-video
+// completion for solo-raid pips -> fires HandleIronSourceRewards to the server.
+#define RVA_CheatVideoForSoloRaidPips 0x1F99EA4
 #define RVA_GetSoloRaidManager      0x1B7A4BC
 #define RVA_IsStunned               0x1B490F8
 #define RVA_IsFrozen                0x1B47CD0
